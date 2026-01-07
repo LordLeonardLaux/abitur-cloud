@@ -1,26 +1,58 @@
 {
   "name": "abitur-cloud",
   "version": "0.1.0",
-  "private": true,
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:electron": "tsc -p tsconfig.electron.json",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "electron:dev": "npm run build:electron && concurrently -k \"cross-env BROWSER=none npm run dev\" \"npm run electron:wait\"",
+    "electron:wait": "wait-on tcp:3000 && electron .",
+    "dist": "npm run build && npm run build:electron && electron-builder && cd dist/mac-arm64 && zip -r ../AbiturCloud_v28.zip \"Abitur Cloud.app\" && cp ../AbiturCloud_v28.zip ~/Desktop/AbiturCloud_Builds/AbiturCloud_v28.zip"
+  },
+  "build": {
+    "appId": "com.lordleonardlaux.abiturcloud",
+    "productName": "Abitur Cloud",
+    "mac": {
+      "category": "public.app-category.education"
+    },
+    "directories": {
+      "output": "dist",
+      "buildResources": "resources"
+    },
+    "files": [
+      "out/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ]
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.89.0",
+    "clsx": "^2.1.1",
+    "electron-serve": "^3.0.0",
+    "framer-motion": "^12.23.26",
+    "jimp": "^1.6.0",
+    "lucide-react": "^0.562.0",
     "next": "16.1.1",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@types/node": "^20.19.27",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.0.12",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5.9.3",
+    "wait-on": "^9.0.3"
   }
 }
