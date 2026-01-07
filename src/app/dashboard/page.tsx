@@ -6,7 +6,8 @@ import { SUBJECTS, SUBJECT_COLORS } from '@/lib/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
 import { Profile } from '@/lib/types';
-import { LogOut, Users, Search, ChevronRight } from 'lucide-react';
+import { LogOut, Users, Search, ChevronRight, BookOpen } from 'lucide-react';
+import { GradeMigrationModal } from '@/components/GradeMigrationModal';
 import { cn } from '@/lib/utils';
 
 export default function DashboardPage() {
@@ -362,6 +363,7 @@ export default function DashboardPage() {
 
     return (
         <div className="min-h-screen bg-gray-50 flex">
+            {profile && <GradeMigrationModal user={profile} onUpdate={(g) => window.location.reload()} />}
             {/* Sidebar */}
             <aside className="w-72 bg-white border-r border-gray-100 flex flex-col h-screen sticky top-0">
                 <div className="p-6 border-b border-gray-100">
@@ -522,6 +524,20 @@ export default function DashboardPage() {
             {/* Main Content */}
             <main className="flex-1 p-8">
                 <div className="max-w-5xl mx-auto">
+                    {/* Main Actions Tile Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                        <Link href="/exams" className="group relative overflow-hidden bg-gradient-to-br from-indigo-600 to-violet-600 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all">
+                            <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 rounded-full bg-white/10 blur-2xl"></div>
+                            <div className="relative z-10 flex flex-col h-full justify-between text-white">
+                                <BookOpen className="w-8 h-8 mb-4 opacity-90" />
+                                <div>
+                                    <h3 className="text-lg font-bold">Alt-Klausuren 📚</h3>
+                                    <p className="text-indigo-100 text-xs mt-1">Stöbern & Teilen</p>
+                                </div>
+                            </div>
+                        </Link>
+                    </div>
+
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-2xl font-bold text-gray-900">Meine Fächer</h2>
                         <Link

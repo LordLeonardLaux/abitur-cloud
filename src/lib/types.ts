@@ -3,6 +3,17 @@ export interface Profile {
     username: string;
     full_name: string;
     avatar_url: string | null;
+    grade_level?: string;
+}
+
+export interface Exam {
+    id: string;
+    subject_id: string;
+    title: string;
+    uploader_id: string;
+    storage_path: string;
+    file_name: string;
+    created_at: string;
 }
 
 export interface Topic {

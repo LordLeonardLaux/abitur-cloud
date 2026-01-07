@@ -30,7 +30,7 @@ function createWindow() {
         }).catch(err => {
             console.error("Failed to load production URL:", err);
         });
-        win.webContents.openDevTools();
+        // DevTools disabled for production
     }
 
     win.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {

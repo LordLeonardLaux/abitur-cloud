@@ -49,6 +49,7 @@ export default function SignupPage() {
                     id: data.user.id,
                     username,
                     full_name: fullName,
+                    grade_level: formData.get('gradeLevel') as string,
                     avatar_url: null,
                 });
 
@@ -128,6 +129,20 @@ export default function SignupPage() {
                                 className="block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500 transition-colors"
                                 placeholder="deine@email.de"
                             />
+
+                        </div>
+                        <div>
+                            <label htmlFor="gradeLevel" className="block text-sm font-medium text-gray-700 mb-1">Jahrgangsstufe</label>
+                            <select
+                                id="gradeLevel"
+                                name="gradeLevel"
+                                required
+                                className="block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 focus:border-blue-500 focus:ring-blue-500 transition-colors"
+                            >
+                                <option value="" disabled selected>Bitte wählen...</option>
+                                <option value="12">Klasse 12</option>
+                                <option value="13">Klasse 13</option>
+                            </select>
                         </div>
                         <div>
                             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Passwort</label>
@@ -165,7 +180,7 @@ export default function SignupPage() {
                         </Link>
                     </p>
                 </form>
-            </div>
-        </main>
+            </div >
+        </main >
     );
 }

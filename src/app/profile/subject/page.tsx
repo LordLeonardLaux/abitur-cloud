@@ -16,15 +16,14 @@ function FriendSemesterAccordion({ semester, subjectId, colorClass, friendId }: 
     // const supabase = createClient(); // uses singleton
 
     useEffect(() => {
-        if (isOpen) {
-            supabase.from('topics').select('*').eq('owner_id', friendId).eq('subject_id', subjectId).eq('semester', semester).order('index').then(({ data }) => setTopics(data || []));
-        }
-    }, [isOpen, friendId, subjectId, semester]);
+        // Always fetch to know the color
+        supabase.from('topics').select('*').eq('owner_id', friendId).eq('subject_id', subjectId).eq('semester', semester).order('index').then(({ data }) => setTopics(data || []));
+    }, [friendId, subjectId, semester]);
 
     return (
         <div className="mb-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-white">
             <button onClick={() => setIsOpen(!isOpen)} className={cn("w-full flex items-center justify-between p-6 text-left", isOpen ? "bg-gray-50" : "bg-white hover:bg-gray-50")}>
-                <div className="flex items-center gap-4"><div className={cn("w-2 h-8 rounded-full", colorClass)}></div><span className="text-xl font-semibold text-gray-900">{semester}</span></div>
+                <div className="flex items-center gap-4"><div className={cn("w-2 h-8 rounded-full", topics.length > 0 ? "bg-green-500" : "bg-red-500")}></div><span className="text-xl font-semibold text-gray-900">{semester}</span></div>
                 {isOpen ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronRight className="w-5 h-5 text-gray-400" />}
             </button>
             <AnimatePresence initial={false}>

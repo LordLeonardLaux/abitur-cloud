@@ -10,13 +10,22 @@
     "lint": "eslint",
     "electron:dev": "npm run build:electron && concurrently -k \"cross-env BROWSER=none npm run dev\" \"npm run electron:wait\"",
     "electron:wait": "wait-on tcp:3000 && electron .",
-    "dist": "npm run build && npm run build:electron && electron-builder && cd dist/mac-arm64 && zip -r ../AbiturCloud_v28.zip \"Abitur Cloud.app\" && cp ../AbiturCloud_v28.zip ~/Desktop/AbiturCloud_Builds/AbiturCloud_v28.zip"
+    "dist": "npm run build && npm run build:electron && electron-builder && cd dist/mac-arm64 && zip -r ../AbiturCloud_v33.zip \"Abitur Cloud.app\" && cp ../AbiturCloud_v33.zip ~/Desktop/AbiturCloud_Builds/AbiturCloud_v33.zip"
   },
   "build": {
     "appId": "com.lordleonardlaux.abiturcloud",
     "productName": "Abitur Cloud",
     "mac": {
-      "category": "public.app-category.education"
+      "category": "public.app-category.education",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "resources/icon.png",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist"
     },
     "directories": {
       "output": "dist",

@@ -17,6 +17,7 @@ function ProfileContent() {
     const { user } = useAuth();
 
     const [profile, setProfile] = useState<Profile | null>(null);
+    const [topics, setTopics] = useState<Record<string, boolean>>({});
     // const supabase = createClient(); // uses singleton
 
     useEffect(() => {
@@ -26,6 +27,17 @@ function ProfileContent() {
         }
         if (userId) {
             supabase.from('profiles').select('*').eq('id', userId).single().then(({ data }) => setProfile(data));
+
+            // Fetch all topics for this user to determine content availability
+            supabase.from('topics').select('subject_id')
+                .eq('owner_id', userId)
+                .then(({ data }) => {
+                    const topicMap: Record<string, boolean> = {};
+                    data?.forEach((t: any) => {
+                        topicMap[t.subject_id] = true;
+                    });
+                    setTopics(topicMap);
+                });
         }
     }, [userId, user, router]);
 
@@ -46,7 +58,7 @@ function ProfileContent() {
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                         {SUBJECTS.map(s => (
                             <Link key={s.id} href={`/profile/subject?id=${s.id}&userId=${userId}`} className="group bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-lg transition-all">
-                                <div className={cn("w-3 h-3 rounded-full mb-4 bg-blue-500")}></div>
+                                <div className={cn("w-3 h-3 rounded-full mb-4", topics[s.id] ? "bg-green-500" : "bg-red-500")}></div>
                                 <h3 className="text-lg font-bold text-gray-900 group-hover:text-blue-600">{s.name}</h3>
                             </Link>
                         ))}
