@@ -6,7 +6,7 @@ import { SUBJECTS, SUBJECT_COLORS } from '@/lib/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
 import { Profile } from '@/lib/types';
-import { LogOut, Users, Search, ChevronRight, BookOpen } from 'lucide-react';
+import { LogOut, Users, Search, ChevronRight, BookOpen, Calendar } from 'lucide-react';
 import { GradeMigrationModal } from '@/components/GradeMigrationModal';
 import { cn } from '@/lib/utils';
 
@@ -19,9 +19,23 @@ export default function DashboardPage() {
     const [searchResults, setSearchResults] = useState<Profile[]>([]);
     const [searching, setSearching] = useState(false);
     const [sentRequests, setSentRequests] = useState<string[]>([]); // IDs of users we've sent requests to
+    const [suggestions, setSuggestions] = useState<Profile[]>([]); // Suggested friends
 
     const [userSubjects, setUserSubjects] = useState<Record<string, string>>({}); // subjectId -> type
     const [loadingSubjects, setLoadingSubjects] = useState(true);
+
+    const fetchProfiles = async (ids: string[], token: string) => {
+        return fetch(
+            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/profiles?id=in.(${ids.join(',')})`,
+            {
+                headers: {
+                    'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+                    'Authorization': `Bearer ${token}`,
+                }
+            }
+        );
+    };
+
 
     // Helper: Read token directly from localStorage (bypasses hanging SDK)
     const getTokenFromLocalStorage = (): string | null => {
@@ -60,24 +74,15 @@ export default function DashboardPage() {
                 );
                 if (res.ok) {
                     const friendships = await res.json();
-                    // Extract the OTHER user's ID from each friendship
-                    const friendIds = friendships.map((f: any) => f.user_id === user.id ? f.friend_id : f.user_id);
 
-                    if (friendIds.length > 0) {
+                    if (friendships && friendships.length > 0) {
+                        const friendIds = friendships.map((f: any) => f.user_id === user.id ? f.friend_id : f.user_id);
+
                         // Fetch profiles of friends
-                        const profilesRes = await fetch(
-                            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/profiles?id=in.(${friendIds.join(',')})`,
-                            {
-                                headers: {
-                                    'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-                                    'Authorization': `Bearer ${token}`,
-                                }
-                            }
-                        );
+                        const profilesRes = await fetchProfiles(friendIds, token);
                         if (profilesRes.ok) {
                             const profiles = await profilesRes.json();
                             setFriends(profiles);
-                            console.log("Loaded friends:", profiles);
 
                             // Fetch subjects for each friend
                             const subjectsRes = await fetch(
@@ -89,18 +94,35 @@ export default function DashboardPage() {
                                     }
                                 }
                             );
+
                             if (subjectsRes.ok) {
                                 const subjectsData = await subjectsRes.json();
-                                // Group by user_id
                                 const grouped: Record<string, Record<string, string>> = {};
                                 subjectsData.forEach((s: any) => {
                                     if (!grouped[s.user_id]) grouped[s.user_id] = {};
                                     grouped[s.user_id][s.subject_id] = s.subject_type;
                                 });
                                 setFriendSubjects(grouped);
-                                console.log("Loaded friend subjects:", grouped);
                             }
                         }
+
+                        // Fetch Suggestions (Users in same grade, not friends)
+                        if (profile && profile.grade_level) {
+                            const { data: suggestedUsers } = await supabase
+                                .from('profiles')
+                                .select('*')
+                                .eq('grade_level', profile.grade_level)
+                                .neq('id', profile.id)
+                                .not('id', 'in', `(${friendIds.join(',')})`)
+                                .limit(10);
+
+                            if (suggestedUsers) {
+                                setSuggestions(suggestedUsers.slice(0, 3));
+                            }
+                        }
+                    } else {
+                        setFriends([]);
+                        setSuggestions([]);
                     }
                 }
             } catch (e) {
@@ -114,7 +136,7 @@ export default function DashboardPage() {
             if (!token) return;
 
             try {
-                // Get pending requests where WE are the friend_id (someone sent us a request)
+                // Get pending requests
                 const res = await fetch(
                     `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/friendships?friend_id=eq.${user.id}&status=eq.pending`,
                     {
@@ -126,7 +148,6 @@ export default function DashboardPage() {
                 );
                 if (res.ok) {
                     const requests = await res.json();
-                    // Fetch profiles of requesters
                     if (requests.length > 0) {
                         const requesterIds = requests.map((r: any) => r.user_id);
                         const profilesRes = await fetch(
@@ -459,53 +480,97 @@ export default function DashboardPage() {
                     </div>
                 )}
 
+                {/* Suggestions */}
+                {suggestions.length > 0 && (
+                    <div className="p-4 border-b border-gray-100 bg-blue-50/50">
+                        <h3 className="flex items-center gap-2 text-xs font-bold text-blue-500 uppercase tracking-widest mb-3">
+                            <Users size={14} />
+                            Vorschläge (Klasse {profile?.grade_level})
+                        </h3>
+                        <div className="space-y-2">
+                            {suggestions.map((p) => {
+                                const alreadySent = sentRequests.includes(p.id);
+                                return (
+                                    <div key={p.id} className="flex items-center gap-2">
+                                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold text-xs">
+                                            {p.full_name?.charAt(0) || '?'}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-gray-800 truncate">{p.full_name}</p>
+                                        </div>
+                                        {alreadySent ? (
+                                            <span className="text-[10px] text-gray-400">Gesendet</span>
+                                        ) : (
+                                            <button
+                                                onClick={() => sendFriendRequest(p.id)}
+                                                className="text-xs bg-white border border-blue-200 text-blue-600 px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors"
+                                            >
+                                                +
+                                            </button>
+                                        )}
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 {/* Friends List */}
                 <div className="flex-1 overflow-y-auto p-4">
                     <h3 className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
                         <Users size={14} />
                         Klassenkameraden
                     </h3>
-                    <div className="space-y-1">
-                        {friends.length === 0 ? (
-                            <p className="text-sm text-gray-400 text-center py-4">Noch keine Freunde gefunden.</p>
-                        ) : (
-                            friends.map((friend) => {
-                                const subjects = friendSubjects[friend.id] || {};
-                                const subjectTags = Object.entries(subjects).map(([id, type]) => {
-                                    const subjectName = SUBJECTS.find(s => s.id === id)?.name?.substring(0, 2) || id.substring(0, 2);
-                                    return `${subjectName}:${type}`;
-                                });
-                                return (
-                                    <Link
-                                        key={friend.id}
-                                        href={`/profile?id=${friend.id}`}
-                                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors group"
-                                    >
-                                        <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                                            {friend.full_name?.charAt(0) || '?'}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-gray-800 truncate">{friend.full_name}</p>
-                                            {subjectTags.length > 0 ? (
-                                                <div className="flex flex-wrap gap-1 mt-1">
-                                                    {subjectTags.slice(0, 4).map((tag, i) => (
-                                                        <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
-                                                            {tag}
-                                                        </span>
-                                                    ))}
-                                                    {subjectTags.length > 4 && (
-                                                        <span className="text-[10px] text-gray-400">+{subjectTags.length - 4}</span>
-                                                    )}
-                                                </div>
-                                            ) : (
-                                                <p className="text-xs text-gray-500 truncate">@{friend.username}</p>
-                                            )}
-                                        </div>
-                                        <ChevronRight size={16} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
-                                    </Link>
-                                );
-                            })
-                        )}
+                    <div className="space-y-6">
+                        {['12', '13'].map(grade => {
+                            const gradeFriends = friends.filter(f => f.grade_level === grade || (!f.grade_level && grade === '12')); // Default to 12 if unknown, or just group unknowns
+                            if (gradeFriends.length === 0) return null;
+
+                            return (
+                                <div key={grade}>
+                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 pl-2">Klasse {grade}</h4>
+                                    <div className="space-y-1">
+                                        {gradeFriends.map((friend) => {
+                                            const subjects = friendSubjects[friend.id] || {};
+                                            const subjectTags = Object.entries(subjects).map(([id, type]) => {
+                                                const subjectName = SUBJECTS.find(s => s.id === id)?.name?.substring(0, 2) || id.substring(0, 2);
+                                                return `${subjectName}:${type}`;
+                                            });
+                                            return (
+                                                <Link
+                                                    key={friend.id}
+                                                    href={`/profile?id=${friend.id}`}
+                                                    className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors group"
+                                                >
+                                                    <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                                                        {friend.full_name?.charAt(0) || '?'}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-medium text-gray-800 truncate">{friend.full_name}</p>
+                                                        {subjectTags.length > 0 ? (
+                                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                                {subjectTags.slice(0, 4).map((tag, i) => (
+                                                                    <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">
+                                                                        {tag}
+                                                                    </span>
+                                                                ))}
+                                                                {subjectTags.length > 4 && (
+                                                                    <span className="text-[10px] text-gray-400">+{subjectTags.length - 4}</span>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <p className="text-xs text-gray-500 truncate">@{friend.username}</p>
+                                                        )}
+                                                    </div>
+                                                    <ChevronRight size={16} className="text-gray-300 group-hover:text-gray-500 transition-colors" />
+                                                </Link>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {friends.length === 0 && <p className="text-sm text-gray-400 text-center py-4">Noch keine Freunde.</p>}
                     </div>
                 </div>
 
@@ -524,20 +589,6 @@ export default function DashboardPage() {
             {/* Main Content */}
             <main className="flex-1 p-8">
                 <div className="max-w-5xl mx-auto">
-                    {/* Main Actions Tile Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                        <Link href="/exams" className="group relative overflow-hidden bg-gradient-to-br from-indigo-600 to-violet-600 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all">
-                            <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 rounded-full bg-white/10 blur-2xl"></div>
-                            <div className="relative z-10 flex flex-col h-full justify-between text-white">
-                                <BookOpen className="w-8 h-8 mb-4 opacity-90" />
-                                <div>
-                                    <h3 className="text-lg font-bold">Alt-Klausuren 📚</h3>
-                                    <p className="text-indigo-100 text-xs mt-1">Stöbern & Teilen</p>
-                                </div>
-                            </div>
-                        </Link>
-                    </div>
-
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-2xl font-bold text-gray-900">Meine Fächer</h2>
                         <Link
@@ -584,6 +635,30 @@ export default function DashboardPage() {
                             })}
                         </div>
                     )}
+
+                    {/* Quick Access Tiles - Below Subjects */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
+                        <Link href="/exams" className="group relative overflow-hidden bg-gradient-to-br from-indigo-600 to-violet-600 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all">
+                            <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 rounded-full bg-white/10 blur-2xl"></div>
+                            <div className="relative z-10 flex flex-col h-full justify-between text-white">
+                                <BookOpen className="w-8 h-8 mb-4 opacity-90" />
+                                <div>
+                                    <h3 className="text-lg font-bold">Alt-Klausuren 📚</h3>
+                                    <p className="text-indigo-100 text-xs mt-1">Stöbern & Teilen</p>
+                                </div>
+                            </div>
+                        </Link>
+                        <Link href="/materials" className="group relative overflow-hidden bg-gradient-to-br from-emerald-600 to-teal-600 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all">
+                            <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 rounded-full bg-white/10 blur-2xl"></div>
+                            <div className="relative z-10 flex flex-col h-full justify-between text-white">
+                                <Calendar className="w-8 h-8 mb-4 opacity-90" />
+                                <div>
+                                    <h3 className="text-lg font-bold">Unterrichtsmaterial 📅</h3>
+                                    <p className="text-emerald-100 text-xs mt-1">Smartboard-Mitschriften</p>
+                                </div>
+                            </div>
+                        </Link>
+                    </div>
                 </div>
             </main>
         </div>

@@ -67,11 +67,11 @@ function FriendTopicContent() {
 
     return (
         <main className="h-screen flex flex-col bg-white overflow-hidden">
-            <div className="bg-white border-b border-gray-100 flex-shrink-0">
+            <div className="bg-white border-b border-gray-100 flex-shrink-0 pt-10">
                 <div className="max-w-[1600px] mx-auto px-6 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <Link href={`/profile/subject?id=${subjectId}&userId=${friendId}`} className="p-2 -ml-2 rounded-full hover:bg-gray-100"><ChevronLeft className="w-5 h-5 text-gray-600" /></Link>
-                        <div><h1 className="text-lg font-bold text-gray-900 leading-tight">{topic.title}</h1><p className="text-xs text-gray-500 uppercase tracking-wider">{subject.name} • {semester} • von {profile?.full_name}</p></div>
+                    <div className="flex items-center gap-4 pl-16">
+                        <Link href={`/profile/subject?id=${subjectId}&userId=${friendId}`} className="p-2 -ml-2 rounded-full hover:bg-gray-100 flex-shrink-0"><ChevronLeft className="w-5 h-5 text-gray-600" /></Link>
+                        <div className="min-w-0 flex-1"><h1 className="text-lg font-bold text-gray-900 leading-tight truncate">{topic.title}</h1><p className="text-xs text-gray-500 uppercase tracking-wider truncate">{subject.name} • {semester} • von {profile?.full_name}</p></div>
                     </div>
                 </div>
             </div>

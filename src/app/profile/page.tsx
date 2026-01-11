@@ -44,9 +44,9 @@ function ProfileContent() {
     if (!profile) return <div>Loading...</div>;
 
     return (
-        <main className="min-h-screen bg-gray-50 p-8">
+        <main className="min-h-screen bg-gray-50 p-8 pt-14">
             <div className="max-w-5xl mx-auto space-y-8">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 pl-12">
                     <Link href="/dashboard" className="p-2 -ml-2 rounded-full hover:bg-gray-200"><ChevronLeft className="w-6 h-6 text-gray-600" /></Link>
                     <div className="flex items-center gap-4">
                         <div className="w-16 h-16 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-lg">{profile.full_name?.charAt(0)}</div>

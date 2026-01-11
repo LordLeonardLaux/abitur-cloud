@@ -150,9 +150,9 @@ function TopicMain() {
     return (
         <main className="h-screen flex flex-col bg-white overflow-hidden">
             {/* Header ... reused layout */}
-            <div className="bg-white border-b border-gray-100 flex-shrink-0">
+            <div className="bg-white border-b border-gray-100 flex-shrink-0 pt-10">
                 <div className="max-w-[1600px] mx-auto px-6 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 pl-16">
                         <Link href={`/subject?id=${subjectId}`} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
                             <ChevronLeft className="w-5 h-5 text-gray-600" />
                         </Link>

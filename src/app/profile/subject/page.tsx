@@ -58,9 +58,9 @@ function ProfileSubjectContent() {
 
     return (
         <main className="min-h-screen bg-white">
-            <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-200">
+            <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-200 pt-10">
                 <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 pl-16">
                         <Link href={`/profile?id=${userId}`} className="p-2 -ml-2 rounded-full hover:bg-gray-100"><ChevronLeft className="w-6 h-6 text-gray-600" /></Link>
                         <div><h1 className="text-2xl font-bold tracking-tight text-gray-900">{subject.name}</h1>{profile && <p className="text-xs text-gray-500">von {profile.full_name}</p>}</div>
                     </div>

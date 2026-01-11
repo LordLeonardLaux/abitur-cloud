@@ -11,6 +11,7 @@ export const SUBJECTS: Subject[] = [
     { id: 'englisch', name: 'Englisch', allowedTypes: ['LK', 'GK', 'M'] },
     { id: 'biologie', name: 'Biologie', allowedTypes: ['LK', 'GK', 'A', 'M'] },
     { id: 'geschichte', name: 'Geschichte', allowedTypes: ['LK', 'GK'] },
+    { id: 'politik', name: 'PW', allowedTypes: ['A'] },
     { id: 'kunst', name: 'Kunst', allowedTypes: ['LK', 'A'] },
     { id: 'franzoesisch', name: 'Französisch', allowedTypes: ['LK', 'GK', 'M'] },
     { id: 'geographie', name: 'Geographie', allowedTypes: ['LK', 'GK'] },

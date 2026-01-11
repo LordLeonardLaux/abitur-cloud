@@ -6,30 +6,66 @@ import { supabase } from '@/lib/supabase/client';
 import { SUBJECTS } from '@/lib/constants';
 import { Exam, Profile } from '@/lib/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { ChevronLeft, FileText, Upload, Download, Loader2, Search } from 'lucide-react';
+import { ChevronLeft, FileText, Upload, Download, Loader2, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 
 function ExamsContent() {
     const { user } = useAuth();
     const router = useRouter();
-    const [exams, setExams] = useState<Exam[]>([]);
+    const [exams, setExams] = useState<(Exam & { uploader?: Profile })[]>([]);
     const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
 
+    // Preview Modal State
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [previewExam, setPreviewExam] = useState<Exam | null>(null);
+
     useEffect(() => {
-        // Fetch all exams
         const fetchExams = async () => {
-            const { data } = await supabase.from('exams').select('*').order('created_at', { ascending: false });
-            if (data) setExams(data);
+            // First fetch exams
+            const { data: examsData } = await supabase.from('exams').select('*').order('created_at', { ascending: false });
+
+            if (examsData) {
+                // Then fetch profiles for these exams
+                const userIds = Array.from(new Set(examsData.map(e => e.uploader_id)));
+                const { data: profiles } = await supabase.from('profiles').select('*').in('id', userIds);
+
+                const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
+
+                const examsWithProfiles = examsData.map(e => ({
+                    ...e,
+                    uploader: profileMap.get(e.uploader_id)
+                }));
+
+                setExams(examsWithProfiles);
+            }
         };
         fetchExams();
     }, []);
 
     const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files || e.target.files.length === 0 || !user || !selectedSubject) return;
+        if (!e.target.files || e.target.files.length === 0) return;
+
+        if (!user) {
+            alert('Du musst angemeldet sein, um Dateien hochzuladen.');
+            return;
+        }
+
+        if (!selectedSubject) {
+            alert('Bitte wähle zuerst ein Fach aus, bevor du eine Klausur hochlädst.');
+            return;
+        }
+
         const file = e.target.files[0];
+
+        // Validate file type
+        if (!file.name.toLowerCase().endsWith('.pdf')) {
+            alert('Nur PDF-Dateien sind erlaubt.');
+            return;
+        }
+
         setUploading(true);
 
         try {
@@ -37,14 +73,14 @@ function ExamsContent() {
             const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
             const filePath = `exams/${selectedSubject}/${fileName}`;
 
-            // 1. Upload to Storage
-            const { error: uploadError } = await supabase.storage
-                .from('pdfs') // Reuse simple bucket for now, ideally 'exams'
-                .upload(filePath, file);
+            console.log('Uploading to path:', filePath);
+            const { error: uploadError } = await supabase.storage.from('pdfs').upload(filePath, file);
 
-            if (uploadError) throw uploadError;
+            if (uploadError) {
+                console.error('Storage upload error:', uploadError);
+                throw new Error(`Storage-Fehler: ${uploadError.message}`);
+            }
 
-            // 2. Create DB Record
             const { error: dbError } = await supabase.from('exams').insert({
                 subject_id: selectedSubject,
                 title: file.name.replace(`.${fileExt}`, ''),
@@ -53,28 +89,30 @@ function ExamsContent() {
                 file_name: file.name
             });
 
-            if (dbError) throw dbError;
+            if (dbError) {
+                console.error('Database insert error:', dbError);
+                throw new Error(`Datenbank-Fehler: ${dbError.message}`);
+            }
 
-            // Refresh
-            const { data } = await supabase.from('exams').select('*').order('created_at', { ascending: false });
-            if (data) setExams(data);
+            window.location.reload();
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Upload failed:', error);
-            alert('Fehler beim Upload!');
+            alert(`Fehler beim Upload: ${error.message || 'Unbekannter Fehler'}`);
         } finally {
             setUploading(false);
         }
     };
 
-    const downloadExam = async (exam: Exam) => {
-        const { data, error } = await supabase.storage.from('pdfs').download(exam.storage_path);
-        if (data) {
-            const url = URL.createObjectURL(data);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = exam.file_name;
-            a.click();
+    const handlePreview = async (exam: Exam) => {
+        try {
+            const { data } = await supabase.storage.from('pdfs').createSignedUrl(exam.storage_path, 3600);
+            if (data?.signedUrl) {
+                setPreviewUrl(data.signedUrl);
+                setPreviewExam(exam);
+            }
+        } catch (error) {
+            console.error('Error fetching preview:', error);
         }
     };
 
@@ -84,10 +122,10 @@ function ExamsContent() {
     );
 
     return (
-        <main className="min-h-screen bg-gray-50 p-8">
+        <main className="min-h-screen bg-gray-50 p-8 pt-14">
             <div className="max-w-6xl mx-auto space-y-8">
                 {/* Header */}
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 pl-12">
                     <Link href="/dashboard" className="p-2 -ml-2 rounded-full hover:bg-gray-200">
                         <ChevronLeft className="w-6 h-6 text-gray-600" />
                     </Link>
@@ -116,61 +154,95 @@ function ExamsContent() {
                     ))}
                 </div>
 
-                {/* Main Content */}
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 min-h-[500px] flex flex-col">
-                    {/* Toolbar */}
-                    <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-4">
-                        <div className="relative flex-1 max-w-sm">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                            <input
-                                type="text"
-                                placeholder="Suchen..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2 bg-gray-50 rounded-lg text-sm border-none focus:ring-1 focus:ring-blue-500"
-                            />
-                        </div>
-                        {selectedSubject && (
-                            <div className="relative">
-                                <label className={cn("flex items-center gap-2 cursor-pointer px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors", uploading && "opacity-50 pointer-events-none")}>
-                                    {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                                    Upload für {SUBJECTS.find(s => s.id === selectedSubject)?.name}
-                                    <input type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden" onChange={handleUpload} />
-                                </label>
-                            </div>
-                        )}
+                {/* Search & Upload Action */}
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder="Suchen..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-9 pr-4 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:ring-1 focus:ring-blue-500"
+                        />
                     </div>
+                    {selectedSubject && (
+                        <label className={cn("flex items-center gap-2 cursor-pointer px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors", uploading && "opacity-50 pointer-events-none")}>
+                            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                            Upload für {SUBJECTS.find(s => s.id === selectedSubject)?.name}
+                            <input type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden" onChange={handleUpload} />
+                        </label>
+                    )}
+                </div>
 
-                    {/* List */}
-                    <div className="flex-1 p-4 space-y-2">
-                        {filteredExams.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-2 opacity-50">
-                                <FileText size={48} />
-                                <p>Keine Klausuren gefunden.</p>
-                            </div>
-                        ) : (
-                            filteredExams.map(exam => (
-                                <div key={exam.id} className="flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors group">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-10 h-10 rounded-lg bg-red-100 text-red-600 flex items-center justify-center">
-                                            <FileText size={20} />
-                                        </div>
-                                        <div>
-                                            <h3 className="font-medium text-gray-900">{exam.title}</h3>
-                                            <div className="flex items-center gap-2 text-xs text-gray-500">
-                                                <span className="bg-gray-100 px-1.5 py-0.5 rounded">{SUBJECTS.find(s => s.id === exam.subject_id)?.name}</span>
-                                                <span>• {new Date(exam.created_at).toLocaleDateString()}</span>
-                                            </div>
+                {/* List moved to bottom */}
+                <div className="space-y-2">
+                    {filteredExams.length === 0 ? (
+                        <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center text-gray-400 space-y-2 opacity-50 border border-gray-100">
+                            <FileText size={48} />
+                            <p>Keine Klausuren gefunden.</p>
+                        </div>
+                    ) : (
+                        filteredExams.map(exam => (
+                            <button
+                                key={exam.id}
+                                onClick={() => handlePreview(exam)}
+                                className="w-full bg-white flex items-center justify-between p-4 rounded-xl border border-gray-100 hover:shadow-md transition-all group text-left"
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
+                                        <FileText size={24} />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors">{exam.title}</h3>
+                                        <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
+                                            <span className="bg-gray-100 px-1.5 py-0.5 rounded font-medium text-gray-600">{SUBJECTS.find(s => s.id === exam.subject_id)?.name}</span>
+                                            <span>• {new Date(exam.created_at).toLocaleDateString()}</span>
+                                            {exam.uploader && (
+                                                <span className="text-blue-500">• von {exam.uploader.full_name}</span>
+                                            )}
                                         </div>
                                     </div>
-                                    <button onClick={() => downloadExam(exam)} className="p-2 text-gray-400 hover:text-blue-600 rounded-full hover:bg-blue-50 transition-colors">
+                                </div>
+                                <div className="p-3 text-gray-400 group-hover:text-blue-600">
+                                    <FileText size={20} />
+                                </div>
+                            </button>
+                        ))
+                    )}
+                </div>
+
+                {/* Preview Modal */}
+                {previewUrl && previewExam && (
+                    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewUrl(null)}>
+                        <div className="bg-white rounded-2xl w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-900">{previewExam.title}</h3>
+                                    <p className="text-sm text-gray-500">
+                                        {SUBJECTS.find(s => s.id === previewExam.subject_id)?.name} • {new Date(previewExam.created_at).toLocaleDateString()}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <a
+                                        href={previewUrl}
+                                        download={previewExam.file_name}
+                                        className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
+                                        title="Download"
+                                    >
                                         <Download size={20} />
+                                    </a>
+                                    <button onClick={() => setPreviewUrl(null)} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors">
+                                        <X size={20} />
                                     </button>
                                 </div>
-                            ))
-                        )}
+                            </div>
+                            <div className="flex-1 bg-gray-100">
+                                <iframe src={previewUrl} className="w-full h-full" title="PDF Preview" />
+                            </div>
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
         </main>
     );
