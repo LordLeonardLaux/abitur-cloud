@@ -6,18 +6,37 @@ import { supabase } from '@/lib/supabase/client';
 import { SUBJECTS } from '@/lib/constants';
 import { ClassMaterial, Profile } from '@/lib/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { ChevronLeft, ChevronRight, Upload, Download, FileText, Calendar, Trash2, Edit3, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, Download, FileText, Calendar, Trash2, Edit3, X, Search, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+// Simple debounce hook implementation if not available
+function useDebounceValue<T>(value: T, delay: number): T {
+    const [debouncedValue, setDebouncedValue] = useState<T>(value);
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedValue(value);
+        }, delay);
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [value, delay]);
+    return debouncedValue;
+}
 
 function MaterialsContent() {
     const { user } = useAuth();
     const [profile, setProfile] = useState<Profile | null>(null);
     const [materials, setMaterials] = useState<ClassMaterial[]>([]);
-    const [selectedSubject, setSelectedSubject] = useState<string>('all'); // Default to 'all'
+    const [selectedSubject, setSelectedSubject] = useState<string>('all');
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
-    const [dayMaterials, setDayMaterials] = useState<ClassMaterial[]>([]);
+
+    // Search State
+    const [searchTerm, setSearchTerm] = useState('');
+    const debouncedSearchTerm = useDebounceValue(searchTerm, 500);
+
+    // Filtered materials (either bye day or search results)
+    const [displayMaterials, setDisplayMaterials] = useState<ClassMaterial[]>([]);
 
     // Preview Modal State
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -47,36 +66,45 @@ function MaterialsContent() {
 
     useEffect(() => {
         const fetchMaterials = async () => {
-            const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-            const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+            let query = supabase.from('class_materials').select('*');
 
-            let query = supabase
-                .from('class_materials')
-                .select('*')
-                .gte('material_date', startOfMonth.toISOString().split('T')[0])
-                .lte('material_date', endOfMonth.toISOString().split('T')[0])
-                .order('material_date');
+            if (debouncedSearchTerm) {
+                // Search Mode
+                query = query.ilike('file_name', `%${debouncedSearchTerm}%`);
+            } else {
+                // Calendar Mode
+                const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+                const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+                query = query
+                    .gte('material_date', startOfMonth.toISOString().split('T')[0])
+                    .lte('material_date', endOfMonth.toISOString().split('T')[0]);
+            }
 
             if (selectedSubject !== 'all') {
                 query = query.eq('subject_id', selectedSubject);
             }
 
+            query = query.order('material_date', { ascending: false }); // Newest first is usually better for search
+
             const { data } = await query;
             setMaterials(data || []);
         };
         fetchMaterials();
-    }, [currentMonth, selectedSubject]);
+    }, [currentMonth, selectedSubject, debouncedSearchTerm]);
 
     useEffect(() => {
-        // If we switch to 'all', we might want to clear selectedDate if it has no materials? 
-        // Or better, just refresh the list.
-        if (selectedDate) {
+        if (debouncedSearchTerm) {
+            // Search Mode: Show all matches
+            setDisplayMaterials(materials);
+        } else if (selectedDate) {
+            // Calendar Mode: Show selected day
             const filtered = materials.filter(m => m.material_date === selectedDate);
-            setDayMaterials(filtered);
+            setDisplayMaterials(filtered);
         } else {
-            setDayMaterials([]);
+            // Calendar Mode: No day selected
+            setDisplayMaterials([]);
         }
-    }, [selectedDate, materials]);
+    }, [selectedDate, materials, debouncedSearchTerm]);
 
     // Handle file selection - opens modal
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,14 +112,13 @@ function MaterialsContent() {
         const file = e.target.files[0];
         setPendingFile(file);
         setUploadFileName(file.name.replace(/\.[^/.]+$/, '')); // Remove extension
-        // Default upload subject: if 'all' is selected, default to 'mathe', else use selected
         setUploadSubject(selectedSubject === 'all' ? 'mathe' : selectedSubject);
         setUploadLessonHour(1); // Default to 1st hour
         setShowUploadModal(true);
         e.target.value = ''; // Reset input
     };
 
-    // Confirm upload with custom name and subject
+    // Confirm upload
     const confirmUpload = async () => {
         if (!pendingFile || !user || !isSmartboard) return;
 
@@ -145,7 +172,7 @@ function MaterialsContent() {
     const openEditModal = (m: ClassMaterial) => {
         setEditingMaterial(m);
         setEditDate(m.material_date);
-        setEditName(m.file_name.replace(/\.[^/.]+$/, '')); // Without extension
+        setEditName(m.file_name.replace(/\.[^/.]+$/, ''));
         setEditLessonHour(m.lesson_hour || 1);
     };
 
@@ -215,41 +242,56 @@ function MaterialsContent() {
         <main className="min-h-screen bg-gray-50 p-8 pt-14">
             <div className="max-w-6xl mx-auto space-y-8">
                 {/* Header */}
-                <div className="flex items-center justify-between pl-12">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pl-12 pr-4">
                     <div className="flex items-center gap-4">
                         <Link href="/dashboard" className="p-2 -ml-2 rounded-full hover:bg-gray-200">
                             <ChevronLeft className="w-6 h-6 text-gray-600" />
                         </Link>
                         <div>
                             <h1 className="text-3xl font-bold text-gray-900">Unterrichtsmaterial 📅</h1>
-                            <p className="text-gray-500">Smartboard-Mitschriften nach Datum</p>
+                            <p className="text-gray-500">
+                                {debouncedSearchTerm ? 'Suchergebnisse' : 'Smartboard-Mitschriften nach Datum'}
+                            </p>
                         </div>
                     </div>
 
-                    {/* BIG Upload Button for Smartboard */}
-                    {isSmartboard && (
-                        <label className={cn(
-                            "flex items-center gap-3 px-6 py-4 rounded-2xl cursor-pointer transition-all shadow-lg",
-                            uploading
-                                ? "bg-gray-300 text-gray-500"
-                                : "bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700"
-                        )}>
-                            <Upload size={24} />
-                            <span className="font-bold text-lg">Mitschrift hochladen</span>
+                    <div className="flex items-center gap-4 flex-1 lg:justify-end">
+                        {/* Search Bar */}
+                        <div className="relative w-full max-w-md">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                             <input
-                                type="file"
-                                accept="application/pdf,image/*"
-                                className="hidden"
-                                onChange={handleFileSelect}
-                                disabled={uploading}
+                                type="text"
+                                placeholder="Mitschriften suchen..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-9 pr-4 py-2.5 bg-white rounded-xl text-sm border border-gray-200 focus:ring-2 focus:ring-blue-500 shadow-sm"
                             />
-                        </label>
-                    )}
+                        </div>
+
+                        {/* Upload Button */}
+                        {isSmartboard && (
+                            <label className={cn(
+                                "flex items-center gap-2 px-4 py-2.5 rounded-xl cursor-pointer transition-all shadow-md active:scale-95 flex-shrink-0",
+                                uploading
+                                    ? "bg-gray-300 text-gray-500"
+                                    : "bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700"
+                            )}>
+                                {uploading ? <Loader2 className="animate-spin w-5 h-5" /> : <Upload className="w-5 h-5" />}
+                                <span className="font-bold hidden sm:inline">Hochladen</span>
+                                <input
+                                    type="file"
+                                    accept="application/pdf,image/*"
+                                    className="hidden"
+                                    onChange={handleFileSelect}
+                                    disabled={uploading}
+                                />
+                            </label>
+                        )}
+                    </div>
                 </div>
 
                 {/* Subject Tabs */}
                 <div className="flex flex-wrap gap-2">
-                    {/* All Button */}
                     <button
                         onClick={() => { setSelectedSubject('all'); setSelectedDate(null); }}
                         className={cn(
@@ -278,8 +320,8 @@ function MaterialsContent() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Calendar */}
-                    <div className="bg-white rounded-2xl shadow-lg p-6">
+                    {/* Calendar (Disabled visually or just dimmed when searching) */}
+                    <div className={cn("bg-white rounded-2xl shadow-lg p-6 transition-opacity", debouncedSearchTerm && "opacity-50 pointer-events-none")}>
                         <div className="flex items-center justify-between mb-6">
                             <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))} className="p-2 hover:bg-gray-100 rounded-lg">
                                 <ChevronLeft size={20} />
@@ -320,9 +362,66 @@ function MaterialsContent() {
                         </div>
                     </div>
 
-                    {/* Day Detail */}
-                    <div className="bg-white rounded-2xl shadow-lg p-6">
-                        {selectedDate ? (
+                    {/* Results / Day Detail */}
+                    <div className="bg-white rounded-2xl shadow-lg p-6 max-h-[600px] overflow-y-auto">
+                        {debouncedSearchTerm ? (
+                            // SEARCH MODE
+                            <>
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                        <Search size={18} />
+                                        Suchergebnisse
+                                        <span className="text-sm font-normal text-gray-500 ml-2">
+                                            ({displayMaterials.length} gefunden)
+                                        </span>
+                                    </h3>
+                                </div>
+                                {displayMaterials.length > 0 ? (
+                                    <div className="space-y-3">
+                                        {displayMaterials.map(m => (
+                                            <div key={m.id} className="group flex items-center gap-3 p-4 bg-gray-50 rounded-xl transition-all hover:bg-white hover:shadow-md border border-transparent hover:border-gray-100">
+                                                <button onClick={() => handlePreview(m)} className="flex items-center gap-3 flex-1 text-left">
+                                                    <FileText className="text-blue-500 flex-shrink-0" size={24} />
+                                                    <div className="overflow-hidden">
+                                                        <span className="block font-medium text-gray-800 truncate">{m.file_name}</span>
+                                                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                                                            <span className="bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-bold text-[10px]">
+                                                                {new Date(m.material_date).toLocaleDateString()}
+                                                            </span>
+                                                            <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold text-[10px]">
+                                                                {SUBJECTS.find(s => s.id === m.subject_id)?.name.substring(0, 3)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                                {isSmartboard && (
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); openEditModal(m); }}
+                                                            className="p-2 hover:bg-blue-100 rounded-lg text-gray-400 hover:text-blue-600"
+                                                        >
+                                                            <Edit3 size={18} />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); deleteMaterial(m); }}
+                                                            className="p-2 hover:bg-red-100 rounded-lg text-gray-400 hover:text-red-600"
+                                                        >
+                                                            <Trash2 size={18} />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-12 text-gray-400">
+                                        <Search size={48} className="mx-auto mb-4 opacity-50" />
+                                        <p>Keine Mitschriften gefunden für "{debouncedSearchTerm}"</p>
+                                    </div>
+                                )}
+                            </>
+                        ) : selectedDate ? (
+                            // CALENDAR MODE WITH DATE
                             <>
                                 <div className="flex items-center justify-between mb-6">
                                     <h3 className="text-lg font-bold text-gray-900">
@@ -332,9 +431,9 @@ function MaterialsContent() {
                                     {isSmartboard && <p className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">Smartboard</p>}
                                 </div>
 
-                                {dayMaterials.length > 0 ? (
+                                {displayMaterials.length > 0 ? (
                                     <div className="space-y-3">
-                                        {dayMaterials.map(m => (
+                                        {displayMaterials.map(m => (
                                             <div key={m.id} className="group flex items-center gap-3 p-4 bg-gray-50 rounded-xl transition-all hover:bg-white hover:shadow-md border border-transparent hover:border-gray-100">
                                                 <button onClick={() => handlePreview(m)} className="flex items-center gap-3 flex-1 text-left">
                                                     <div className="relative">
@@ -348,7 +447,6 @@ function MaterialsContent() {
                                                     <div>
                                                         <span className="block font-medium text-gray-800 truncate">{m.file_name}</span>
                                                         <div className="flex items-center gap-2 text-xs text-gray-500">
-                                                            {/* Show subject if 'all' is selected */}
                                                             {selectedSubject === 'all' && (
                                                                 <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold text-[10px]">
                                                                     {SUBJECTS.find(s => s.id === m.subject_id)?.name.substring(0, 3)}
@@ -360,19 +458,16 @@ function MaterialsContent() {
                                                 </button>
 
                                                 {isSmartboard && (
-                                                    // MODIFIED: Removed opacity hover logic to ensure visibility
                                                     <div className="flex items-center gap-1">
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); openEditModal(m); }}
                                                             className="p-2 hover:bg-blue-100 rounded-lg text-gray-400 hover:text-blue-600"
-                                                            title="Bearbeiten"
                                                         >
                                                             <Edit3 size={18} />
                                                         </button>
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); deleteMaterial(m); }}
                                                             className="p-2 hover:bg-red-100 rounded-lg text-gray-400 hover:text-red-600"
-                                                            title="Löschen"
                                                         >
                                                             <Trash2 size={18} />
                                                         </button>
@@ -389,9 +484,10 @@ function MaterialsContent() {
                                 )}
                             </>
                         ) : (
+                            // IDLE STATE
                             <div className="text-center py-12 text-gray-400">
                                 <Calendar size={48} className="mx-auto mb-4 opacity-50" />
-                                <p>Wähle einen Tag im Kalender</p>
+                                <p>Wähle einen Tag im Kalender oder suche oben nach Mitschriften</p>
                             </div>
                         )}
                     </div>
