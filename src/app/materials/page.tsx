@@ -13,7 +13,7 @@ function MaterialsContent() {
     const { user } = useAuth();
     const [profile, setProfile] = useState<Profile | null>(null);
     const [materials, setMaterials] = useState<ClassMaterial[]>([]);
-    const [selectedSubject, setSelectedSubject] = useState<string>('mathe');
+    const [selectedSubject, setSelectedSubject] = useState<string>('all'); // Default to 'all'
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
@@ -50,20 +50,26 @@ function MaterialsContent() {
             const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
             const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
 
-            const { data } = await supabase
+            let query = supabase
                 .from('class_materials')
                 .select('*')
-                .eq('subject_id', selectedSubject)
                 .gte('material_date', startOfMonth.toISOString().split('T')[0])
                 .lte('material_date', endOfMonth.toISOString().split('T')[0])
                 .order('material_date');
 
+            if (selectedSubject !== 'all') {
+                query = query.eq('subject_id', selectedSubject);
+            }
+
+            const { data } = await query;
             setMaterials(data || []);
         };
         fetchMaterials();
     }, [currentMonth, selectedSubject]);
 
     useEffect(() => {
+        // If we switch to 'all', we might want to clear selectedDate if it has no materials? 
+        // Or better, just refresh the list.
         if (selectedDate) {
             const filtered = materials.filter(m => m.material_date === selectedDate);
             setDayMaterials(filtered);
@@ -78,7 +84,8 @@ function MaterialsContent() {
         const file = e.target.files[0];
         setPendingFile(file);
         setUploadFileName(file.name.replace(/\.[^/.]+$/, '')); // Remove extension
-        setUploadSubject(selectedSubject);
+        // Default upload subject: if 'all' is selected, default to 'mathe', else use selected
+        setUploadSubject(selectedSubject === 'all' ? 'mathe' : selectedSubject);
         setUploadLessonHour(1); // Default to 1st hour
         setShowUploadModal(true);
         e.target.value = ''; // Reset input
@@ -242,6 +249,18 @@ function MaterialsContent() {
 
                 {/* Subject Tabs */}
                 <div className="flex flex-wrap gap-2">
+                    {/* All Button */}
+                    <button
+                        onClick={() => { setSelectedSubject('all'); setSelectedDate(null); }}
+                        className={cn(
+                            "px-4 py-2 rounded-xl text-sm font-medium transition-all",
+                            selectedSubject === 'all'
+                                ? "bg-black text-white"
+                                : "bg-white text-gray-600 border border-gray-200 hover:border-black"
+                        )}
+                    >
+                        Alle
+                    </button>
                     {SUBJECTS.map(s => (
                         <button
                             key={s.id}
@@ -328,17 +347,34 @@ function MaterialsContent() {
                                                     </div>
                                                     <div>
                                                         <span className="block font-medium text-gray-800 truncate">{m.file_name}</span>
-                                                        {m.lesson_hour && <span className="text-xs text-gray-500">{m.lesson_hour}. Unterrichtsstunde</span>}
+                                                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                                                            {/* Show subject if 'all' is selected */}
+                                                            {selectedSubject === 'all' && (
+                                                                <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold text-[10px]">
+                                                                    {SUBJECTS.find(s => s.id === m.subject_id)?.name.substring(0, 3)}
+                                                                </span>
+                                                            )}
+                                                            {m.lesson_hour && <span>{m.lesson_hour}. Std</span>}
+                                                        </div>
                                                     </div>
                                                 </button>
 
                                                 {isSmartboard && (
-                                                    <div className="flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <button onClick={() => openEditModal(m)} className="p-2 hover:bg-blue-100 rounded-lg" title="Bearbeiten">
-                                                            <Edit3 size={16} className="text-blue-500" />
+                                                    // MODIFIED: Removed opacity hover logic to ensure visibility
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); openEditModal(m); }}
+                                                            className="p-2 hover:bg-blue-100 rounded-lg text-gray-400 hover:text-blue-600"
+                                                            title="Bearbeiten"
+                                                        >
+                                                            <Edit3 size={18} />
                                                         </button>
-                                                        <button onClick={() => deleteMaterial(m)} className="p-2 hover:bg-red-100 rounded-lg" title="Löschen">
-                                                            <Trash2 size={16} className="text-red-500" />
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); deleteMaterial(m); }}
+                                                            className="p-2 hover:bg-red-100 rounded-lg text-gray-400 hover:text-red-600"
+                                                            title="Löschen"
+                                                        >
+                                                            <Trash2 size={18} />
                                                         </button>
                                                     </div>
                                                 )}
