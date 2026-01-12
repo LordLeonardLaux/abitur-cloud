@@ -15,6 +15,7 @@ export const SUBJECTS: Subject[] = [
     { id: 'kunst', name: 'Kunst', allowedTypes: ['LK', 'A'] },
     { id: 'franzoesisch', name: 'Französisch', allowedTypes: ['LK', 'GK', 'M'] },
     { id: 'geographie', name: 'Geographie', allowedTypes: ['LK', 'GK'] },
+    { id: 'musik', name: 'Musik', allowedTypes: ['GK'] },
 ];
 
 export const SEMESTERS = ['Q1', 'Q2', 'Q3', 'Q4'];

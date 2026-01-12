@@ -10,7 +10,7 @@
     "lint": "eslint",
     "electron:dev": "npm run build:electron && concurrently -k \"cross-env BROWSER=none npm run dev\" \"npm run electron:wait\"",
     "electron:wait": "wait-on tcp:3000 && electron .",
-    "dist": "npm run build && npm run build:electron && electron-builder && cd dist/mac-arm64 && zip -r ../AbiturCloud_v35.4.zip \"Abitur Cloud.app\" && cp ../AbiturCloud_v35.4.zip ~/Desktop/AbiturCloud_Builds/AbiturCloud_v35.4.zip"
+    "dist": "npm run build && npm run build:electron && electron-builder && cd dist/mac-arm64 && zip -r ../AbiturCloud_v35.5.zip \"Abitur Cloud.app\" && cp ../AbiturCloud_v35.5.zip ~/Desktop/AbiturCloud_Builds/AbiturCloud_v35.5.zip"
   },
   "build": {
     "appId": "com.lordleonardlaux.abiturcloud",

@@ -79,7 +79,7 @@ export default function LoginPage() {
                 <div className="text-center">
                     <h1 className="text-3xl font-bold tracking-tight text-gray-900">Abitur Cloud</h1>
                     <p className="mt-2 text-sm text-gray-600">Melde dich an, um fortzufahren</p>
-                    <p className="text-xs text-gray-300 mt-2 font-mono">v35.4</p>
+                    <p className="text-xs text-gray-300 mt-2 font-mono">v35.5</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="mt-8 space-y-6">
