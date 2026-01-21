@@ -74,12 +74,13 @@ export default function LoginPage() {
     }
 
     return (
-        <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-            <div className="w-full max-w-sm space-y-8 bg-white p-8 rounded-2xl shadow-xl border border-gray-100">
+        <main className="min-h-screen flex items-center justify-center bg-blue-600 px-4">
+            <div className="w-full max-w-sm space-y-8 bg-white p-8 rounded-2xl shadow-2xl border border-white/20">
                 <div className="text-center">
                     <h1 className="text-3xl font-bold tracking-tight text-gray-900">Abitur Cloud</h1>
-                    <p className="mt-2 text-sm text-gray-600">Melde dich an, um fortzufahren</p>
-                    <p className="text-xs text-gray-300 mt-2 font-mono">v35.6</p>
+                    <div className="mt-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 animate-pulse">
+                        v50 (App Store Ready) 🚀
+                    </div>
                 </div>
 
                 <form onSubmit={handleSubmit} className="mt-8 space-y-6">

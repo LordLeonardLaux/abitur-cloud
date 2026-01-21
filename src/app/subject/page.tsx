@@ -10,6 +10,7 @@ import { Topic } from '@/lib/types';
 import { ChevronLeft, ChevronDown, ChevronRight, FileText, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Sidebar } from '@/components/dashboard/Sidebar';
 
 function SemesterAccordion({ semester, subjectId, colorClass, userId, isOwner }: { semester: string, subjectId: string, colorClass: string, userId: string, isOwner: boolean }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -125,6 +126,7 @@ function SubjectContent() {
     const searchParams = useSearchParams();
     const id = searchParams.get('id');
     const { user } = useAuth();
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     const subject = SUBJECTS.find((s) => s.id === id);
     const colorClass = "bg-blue-500"; // Default color
@@ -133,14 +135,21 @@ function SubjectContent() {
 
     return (
         <main className="min-h-screen bg-white">
-            <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-200 pt-10">
-                <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4 pl-16">
+            <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-200">
+                <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
                         <Link href="/dashboard" className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
                             <ChevronLeft className="w-6 h-6 text-gray-600" />
                         </Link>
-                        <h1 className="text-2xl font-bold tracking-tight text-gray-900">{subject.name}</h1>
+                        <h1 className="text-xl md:text-2xl font-bold tracking-tight text-gray-900">{subject.name}</h1>
                     </div>
+                    {/* Mobile Burger Menu Inline */}
+                    <button
+                        onClick={() => setIsSidebarOpen(true)}
+                        className="md:hidden p-2 bg-white border border-gray-100 shadow-sm rounded-xl text-gray-900 active:scale-95"
+                    >
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                    </button>
                 </div>
             </div>
 
@@ -158,6 +167,8 @@ function SubjectContent() {
                     ))}
                 </div>
             </div>
+            {/* Sidebar Component */}
+            <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
         </main>
     );
 }

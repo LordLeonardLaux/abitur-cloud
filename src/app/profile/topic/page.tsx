@@ -6,13 +6,14 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { SUBJECTS } from '@/lib/constants';
 import { Topic, TopicFile, Profile } from '@/lib/types';
-import { ChevronLeft, ChevronRight, File as FileIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, File as FileIcon, X, Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Sidebar } from '@/components/dashboard/Sidebar';
+import PDFViewer from '@/components/ui/PDFViewer';
 
 function FriendTopicContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
-    // const supabase = createClient(); // uses singleton
 
     const subjectId = searchParams.get('subjectId');
     const semester = searchParams.get('semester');
@@ -26,6 +27,8 @@ function FriendTopicContent() {
     const [pdfUrl, setPdfUrl] = useState<string | null>(null);
     const [siblingTopics, setSiblingTopics] = useState<Topic[]>([]);
     const [totalTopics, setTotalTopics] = useState(0);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [showFileList, setShowFileList] = useState(false);
 
     const subject = SUBJECTS.find(s => s.id === subjectId);
 
@@ -63,40 +66,137 @@ function FriendTopicContent() {
         if (nextId) router.push(`/profile/topic?subjectId=${subjectId}&semester=${semester}&id=${nextId}&userId=${friendId}`);
     };
 
-    if (!subject || !topic) return <div>Loading...</div>;
+    if (!subject || !topic) return <div className="p-10 text-center flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>;
+
+    const currentIndex = siblingTopics.findIndex(t => t.id === topic.id);
 
     return (
         <main className="h-screen flex flex-col bg-white overflow-hidden">
-            <div className="bg-white border-b border-gray-100 flex-shrink-0 pt-10">
-                <div className="max-w-[1600px] mx-auto px-6 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-4 pl-16">
-                        <Link href={`/profile/subject?id=${subjectId}&userId=${friendId}`} className="p-2 -ml-2 rounded-full hover:bg-gray-100 flex-shrink-0"><ChevronLeft className="w-5 h-5 text-gray-600" /></Link>
-                        <div className="min-w-0 flex-1"><h1 className="text-lg font-bold text-gray-900 leading-tight truncate">{topic.title}</h1><p className="text-xs text-gray-500 uppercase tracking-wider truncate">{subject.name} • {semester} • von {profile?.full_name}</p></div>
+            {/* Standardized Header */}
+            <div className="bg-white border-b border-gray-100 flex-shrink-0">
+                <div className="max-w-[1600px] mx-auto px-4 py-3 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <Link href={`/profile/subject?id=${subjectId}&userId=${friendId}`} className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors">
+                            <ChevronLeft className="w-6 h-6 text-gray-600" />
+                        </Link>
+                        <div className="min-w-0">
+                            <h1 className="text-base md:text-lg font-bold truncate max-w-[150px] md:max-w-none text-gray-900">{topic.title}</h1>
+                            <p className="text-[10px] md:text-xs text-gray-400 uppercase tracking-widest font-bold truncate">
+                                {subject.name} • {semester} • {profile?.full_name}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        {/* Mobile File List Toggle */}
+                        <button
+                            onClick={() => setShowFileList(!showFileList)}
+                            className={cn(
+                                "md:hidden p-2 rounded-xl transition-all",
+                                showFileList ? "bg-blue-600 text-white shadow-lg" : "bg-gray-50 text-gray-600 border border-gray-100"
+                            )}
+                        >
+                            <FileIcon size={20} />
+                        </button>
+
+                        <div className="hidden sm:block">
+                            {/* Optional info or placeholders */}
+                        </div>
+
+                        {/* Mobile Burger Menu Inline */}
+                        <button
+                            onClick={() => setIsSidebarOpen(true)}
+                            className="md:hidden p-2 bg-white border border-gray-100 shadow-sm rounded-xl text-gray-900 active:scale-95"
+                        >
+                            <Menu size={24} />
+                        </button>
                     </div>
                 </div>
             </div>
-            <div className="flex-1 flex overflow-hidden">
-                <aside className="w-64 border-r border-gray-100 flex flex-col bg-gray-50/50">
-                    <div className="p-4 border-b border-gray-100"><h3 className="text-xs font-bold text-gray-400">Dateien (Nur Lesen)</h3></div>
-                    <div className="flex-1 overflow-y-auto p-2 space-y-1">
+
+            <div className="flex-1 flex overflow-hidden relative">
+                {/* File Sidebar - Responsive */}
+                <aside className={cn(
+                    "absolute md:relative z-30 h-full w-64 border-r border-gray-100 flex flex-col bg-white transition-transform duration-300 md:translate-x-0",
+                    showFileList ? "translate-x-0 shadow-2xl" : "-translate-x-full"
+                )}>
+                    <div className="p-4 border-b border-gray-50 flex items-center justify-between">
+                        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Dateien (Nur Lesen)</h3>
+                        <button onClick={() => setShowFileList(false)} className="md:hidden p-1.5 text-gray-400 hover:text-gray-600">
+                            <X size={18} />
+                        </button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
                         {files.map((file, idx) => (
-                            <button key={file.id} onClick={() => setSelectedFileIndex(idx)} className={cn("w-full flex items-center gap-3 p-3 rounded-xl text-left", selectedFileIndex === idx ? "bg-white shadow-sm ring-1 ring-blue-500/20 text-blue-600" : "text-gray-500 hover:bg-white")}>
-                                <div className={cn("p-2 rounded-lg", selectedFileIndex === idx ? "bg-blue-50" : "bg-gray-100")}><FileIcon size={16} /></div><span className="text-sm font-medium truncate flex-1">{file.file_name}</span>
+                            <button
+                                key={file.id}
+                                onClick={() => { setSelectedFileIndex(idx); setShowFileList(false); }}
+                                className={cn(
+                                    "w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all",
+                                    selectedFileIndex === idx
+                                        ? "bg-blue-50 text-blue-700 ring-1 ring-blue-100"
+                                        : "text-gray-500 hover:bg-gray-50"
+                                )}
+                            >
+                                <div className={cn("p-2 rounded-lg", selectedFileIndex === idx ? "bg-white shadow-sm" : "bg-gray-100")}>
+                                    <FileIcon size={16} />
+                                </div>
+                                <span className="text-sm font-semibold truncate flex-1">{file.file_name}</span>
                             </button>
                         ))}
+                        {files.length === 0 && (
+                            <div className="flex flex-col items-center justify-center p-8 text-center">
+                                <FileIcon size={32} className="text-gray-200 mb-2" />
+                                <p className="text-xs text-gray-400">Keine Dateien.</p>
+                            </div>
+                        )}
                     </div>
                 </aside>
-                <div className="flex-1 bg-gray-100 relative flex flex-col">
-                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-4 px-4 py-2 bg-white/90 backdrop-blur rounded-full shadow-lg border border-white/20">
-                        <button onClick={() => navigateTopic('prev')} disabled={siblingTopics.findIndex(t => t.id === topic.id) <= 0} className="p-1.5 hover:text-blue-600 disabled:text-gray-300"><ChevronLeft size={20} /></button>
-                        <span className="text-xs font-bold text-gray-500 min-w-[80px] text-center">Thema {siblingTopics.findIndex(t => t.id === topic.id) + 1} / {totalTopics}</span>
-                        <button onClick={() => navigateTopic('next')} disabled={siblingTopics.findIndex(t => t.id === topic.id) >= totalTopics - 1} className="p-1.5 hover:text-blue-600 disabled:text-gray-300"><ChevronRight size={20} /></button>
+
+                {/* Mobile Sidebar Overlay */}
+                {showFileList && (
+                    <div className="md:hidden absolute inset-0 bg-black/20 backdrop-blur-sm z-20" onClick={() => setShowFileList(false)} />
+                )}
+
+                {/* Main Content (PDF) */}
+                <div className="flex-1 bg-gray-50 relative flex flex-col overflow-hidden">
+                    {/* Navigation Bar */}
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-4 px-4 py-2 bg-white/95 backdrop-blur-md rounded-full shadow-lg border border-gray-100">
+                        <button
+                            onClick={() => navigateTopic('prev')}
+                            disabled={currentIndex <= 0}
+                            className="p-1 hover:text-blue-600 disabled:text-gray-200 transition-colors"
+                        >
+                            <ChevronLeft size={20} />
+                        </button>
+                        <span className="text-[10px] font-black text-gray-500 min-w-[70px] text-center uppercase tracking-tighter">
+                            Thema {currentIndex + 1} / {totalTopics}
+                        </span>
+                        <button
+                            onClick={() => navigateTopic('next')}
+                            disabled={currentIndex >= totalTopics - 1}
+                            className="p-1 hover:text-blue-600 disabled:text-gray-200 transition-colors"
+                        >
+                            <ChevronRight size={20} />
+                        </button>
                     </div>
-                    {pdfUrl ? <iframe src={pdfUrl} className="w-full h-full border-none" /> : <div className="flex-1 flex items-center justify-center text-gray-400">Keine Datei ausgewählt</div>}
+
+                    <div className="flex-1 w-full h-full overflow-hidden relative">
+                        <PDFViewer url={pdfUrl} />
+                    </div>
                 </div>
             </div>
-        </main>
-    )
+
+            {/* Navigation Sidebar Component */}
+            <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+        </main >
+    );
 }
 
-export default function Page() { return <Suspense fallback={<div>Loading...</div>}><FriendTopicContent /></Suspense> }
+export default function Page() {
+    return (
+        <Suspense fallback={<div className="h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+            <FriendTopicContent />
+        </Suspense>
+    );
+}

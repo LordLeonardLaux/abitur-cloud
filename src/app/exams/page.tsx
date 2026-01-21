@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ChevronLeft, FileText, Upload, Download, Loader2, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
+import { Sidebar } from '@/components/dashboard/Sidebar';
 
 function ExamsContent() {
     const { user } = useAuth();
@@ -17,7 +18,7 @@ function ExamsContent() {
     const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     // Preview Modal State
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [previewExam, setPreviewExam] = useState<Exam | null>(null);
@@ -122,17 +123,26 @@ function ExamsContent() {
     );
 
     return (
-        <main className="min-h-screen bg-gray-50 p-8 pt-14">
+        <main className="min-h-screen bg-gray-50 p-4 md:p-8">
             <div className="max-w-6xl mx-auto space-y-8">
                 {/* Header */}
-                <div className="flex items-center gap-4 pl-12">
-                    <Link href="/dashboard" className="p-2 -ml-2 rounded-full hover:bg-gray-200">
-                        <ChevronLeft className="w-6 h-6 text-gray-600" />
-                    </Link>
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Alt-Klausuren 📚</h1>
-                        <p className="text-gray-500">Teile und finde wichtige Klausuren.</p>
+                <div className="flex items-center justify-between gap-4 px-2 md:px-0">
+                    <div className="flex items-center gap-3">
+                        <Link href="/dashboard" className="p-2 -ml-2 rounded-full hover:bg-gray-200">
+                            <ChevronLeft className="w-6 h-6 text-gray-600" />
+                        </Link>
+                        <div>
+                            <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">Klausuren</h1>
+                            <p className="text-gray-500 text-xs md:text-sm">Finden & Teilen</p>
+                        </div>
                     </div>
+                    {/* Mobile Burger Menu Inline */}
+                    <button
+                        onClick={() => setIsSidebarOpen(true)}
+                        className="md:hidden p-2 bg-white border border-gray-100 shadow-sm rounded-xl text-gray-900 active:scale-95"
+                    >
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                    </button>
                 </div>
 
                 {/* Subject Filters */}
@@ -244,6 +254,8 @@ function ExamsContent() {
                     </div>
                 )}
             </div>
+            {/* Sidebar Component */}
+            <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
         </main>
     );
 }

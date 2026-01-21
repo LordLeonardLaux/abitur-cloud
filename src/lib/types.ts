@@ -25,7 +25,9 @@ export interface ClassMaterial {
     file_name: string;
     storage_path: string;
     lesson_hour?: number;
+    grade_level: string; // '12' or '13'
     created_at: string;
+    uploader?: Profile; // Joined data
 }
 
 export interface Topic {
@@ -43,5 +45,19 @@ export interface TopicFile {
     topic_id: string;
     file_name: string;
     storage_path: string;
+    created_at: string;
+}
+
+export interface ChatMessage {
+    id: string;
+    sender_id: string;
+    receiver_id: string;
+    content: string;
+    message_type: 'text' | 'material_request';
+    metadata?: {
+        subject?: string;
+        topic?: string;
+    };
+    is_read: boolean;
     created_at: string;
 }

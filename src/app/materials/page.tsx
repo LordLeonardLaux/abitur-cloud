@@ -6,8 +6,11 @@ import { supabase } from '@/lib/supabase/client';
 import { SUBJECTS } from '@/lib/constants';
 import { ClassMaterial, Profile } from '@/lib/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { ChevronLeft, ChevronRight, Upload, Download, FileText, Calendar, Trash2, Edit3, X, Search, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, Download, FileText, Calendar, Trash2, Edit3, X, Search, Loader2, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Sidebar } from '@/components/dashboard/Sidebar';
+import PDFViewer from '@/components/ui/PDFViewer';
+
 // Simple debounce hook implementation if not available
 function useDebounceValue<T>(value: T, delay: number): T {
     const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -26,10 +29,12 @@ function MaterialsContent() {
     const { user } = useAuth();
     const [profile, setProfile] = useState<Profile | null>(null);
     const [materials, setMaterials] = useState<ClassMaterial[]>([]);
+    const [selectedGrade, setSelectedGrade] = useState<'12' | '13'>('13'); // Default to 13
     const [selectedSubject, setSelectedSubject] = useState<string>('all');
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [uploading, setUploading] = useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     // Search State
     const [searchTerm, setSearchTerm] = useState('');
@@ -48,6 +53,7 @@ function MaterialsContent() {
     const [uploadSubject, setUploadSubject] = useState('mathe');
     const [uploadFileName, setUploadFileName] = useState('');
     const [uploadLessonHour, setUploadLessonHour] = useState<number>(1);
+    const [uploadGrade, setUploadGrade] = useState<'12' | '13'>('13');
 
     // Edit Modal State
     const [editingMaterial, setEditingMaterial] = useState<ClassMaterial | null>(null);
@@ -84,13 +90,26 @@ function MaterialsContent() {
                 query = query.eq('subject_id', selectedSubject);
             }
 
-            query = query.order('material_date', { ascending: false }); // Newest first is usually better for search
+            query = query
+                .eq('grade_level', selectedGrade)
+                .order('material_date', { ascending: false });
 
-            const { data } = await query;
-            setMaterials(data || []);
+            const { data, error } = await query;
+            if (error) console.error("Error fetching materials:", error);
+
+            // Join profile data manually for now (or could use use view)
+            if (data) {
+                const materialsWithProfiles = await Promise.all(data.map(async (m) => {
+                    const { data: profileData } = await supabase.from('profiles').select('*').eq('id', m.uploader_id).single();
+                    return { ...m, uploader: profileData } as ClassMaterial;
+                }));
+                setMaterials(materialsWithProfiles);
+            } else {
+                setMaterials([]);
+            }
         };
         fetchMaterials();
-    }, [currentMonth, selectedSubject, debouncedSearchTerm]);
+    }, [currentMonth, selectedSubject, debouncedSearchTerm, selectedGrade]);
 
     useEffect(() => {
         if (debouncedSearchTerm) {
@@ -114,13 +133,14 @@ function MaterialsContent() {
         setUploadFileName(file.name.replace(/\.[^/.]+$/, '')); // Remove extension
         setUploadSubject(selectedSubject === 'all' ? 'mathe' : selectedSubject);
         setUploadLessonHour(1); // Default to 1st hour
+        setUploadGrade(selectedGrade); // Default to currently viewed grade
         setShowUploadModal(true);
         e.target.value = ''; // Reset input
     };
 
     // Confirm upload
     const confirmUpload = async () => {
-        if (!pendingFile || !user || !isSmartboard) return;
+        if (!pendingFile || !user) return; // Removed isSmartboard check so everyone can upload
 
         const today = new Date().toISOString().split('T')[0];
         const fileExt = pendingFile.name.split('.').pop();
@@ -140,7 +160,8 @@ function MaterialsContent() {
                 material_date: today,
                 file_name: finalFileName,
                 storage_path: filePath,
-                lesson_hour: uploadLessonHour
+                lesson_hour: uploadLessonHour,
+                grade_level: uploadGrade
             });
             if (dbError) throw dbError;
 
@@ -239,20 +260,30 @@ function MaterialsContent() {
     const weekDays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
     return (
-        <main className="min-h-screen bg-gray-50 p-8 pt-14">
+        <main className="min-h-screen bg-gray-50 p-4 md:p-8">
             <div className="max-w-6xl mx-auto space-y-8">
                 {/* Header */}
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pl-12 pr-4">
-                    <div className="flex items-center gap-4">
-                        <Link href="/dashboard" className="p-2 -ml-2 rounded-full hover:bg-gray-200">
-                            <ChevronLeft className="w-6 h-6 text-gray-600" />
-                        </Link>
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-900">Unterrichtsmaterial 📅</h1>
-                            <p className="text-gray-500">
-                                {debouncedSearchTerm ? 'Suchergebnisse' : 'Smartboard-Mitschriften nach Datum'}
-                            </p>
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 md:gap-6 px-2 md:px-0">
+                    <div className="flex items-center justify-between w-full lg:w-auto">
+                        <div className="flex items-center gap-3">
+                            <Link href="/dashboard" className="p-2 -ml-2 rounded-full hover:bg-gray-200">
+                                <ChevronLeft className="w-6 h-6 text-gray-600" />
+                            </Link>
+                            <div>
+                                <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">Material</h1>
+                                <p className="text-gray-500 text-xs md:text-sm">
+                                    {debouncedSearchTerm ? 'Suche' : 'Smartboard-Mitschriften'}
+                                </p>
+                            </div>
                         </div>
+                        {/* Mobile Burger Menu Inline */}
+                        <button
+                            onClick={() => setIsSidebarOpen(true)}
+                            className="md:hidden p-2 bg-white border border-gray-100 shadow-sm rounded-xl text-gray-900 active:scale-95"
+                        >
+                            <Search size={22} className="hidden" /> {/* Placeholder/Icon shift logic if needed */}
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-4 flex-1 lg:justify-end">
@@ -269,33 +300,32 @@ function MaterialsContent() {
                         </div>
 
                         {/* Upload Button */}
-                        {isSmartboard && (
-                            <label className={cn(
-                                "flex items-center gap-2 px-4 py-2.5 rounded-xl cursor-pointer transition-all shadow-md active:scale-95 flex-shrink-0",
-                                uploading
-                                    ? "bg-gray-300 text-gray-500"
-                                    : "bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700"
-                            )}>
-                                {uploading ? <Loader2 className="animate-spin w-5 h-5" /> : <Upload className="w-5 h-5" />}
-                                <span className="font-bold hidden sm:inline">Hochladen</span>
-                                <input
-                                    type="file"
-                                    accept="application/pdf,image/*"
-                                    className="hidden"
-                                    onChange={handleFileSelect}
-                                    disabled={uploading}
-                                />
-                            </label>
-                        )}
+                        <label className={cn(
+                            "flex items-center gap-2 px-4 py-2.5 rounded-xl cursor-pointer transition-all shadow-md active:scale-95 flex-shrink-0",
+                            uploading
+                                ? "bg-gray-300 text-gray-500"
+                                : "bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700"
+                        )}>
+                            {uploading ? <Loader2 className="animate-spin w-5 h-5" /> : <Upload className="w-5 h-5" />}
+                            <span className="font-bold hidden sm:inline">Hochladen</span>
+                            <input
+                                type="file"
+                                accept="application/pdf,image/*"
+                                className="hidden"
+                                onChange={handleFileSelect}
+                                disabled={uploading}
+                            />
+                        </label>
+
                     </div>
                 </div>
 
-                {/* Subject Tabs */}
-                <div className="flex flex-wrap gap-2">
+                {/* Subject Tabs - Scrollable on mobile */}
+                <div className="flex overflow-x-auto pb-2 -mx-2 px-2 md:mx-0 md:px-0 scrollbar-hide gap-2 no-scrollbar">
                     <button
                         onClick={() => { setSelectedSubject('all'); setSelectedDate(null); }}
                         className={cn(
-                            "px-4 py-2 rounded-xl text-sm font-medium transition-all",
+                            "px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap",
                             selectedSubject === 'all'
                                 ? "bg-black text-white"
                                 : "bg-white text-gray-600 border border-gray-200 hover:border-black"
@@ -303,12 +333,36 @@ function MaterialsContent() {
                     >
                         Alle
                     </button>
+
+                    <button
+                        onClick={() => { setSelectedGrade('13'); setSelectedDate(null); }}
+                        className={cn(
+                            "px-4 py-2 rounded-xl text-sm font-bold transition-all border whitespace-nowrap",
+                            selectedGrade === '13'
+                                ? "bg-purple-600 text-white border-purple-600 shadow-md"
+                                : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+                        )}
+                    >
+                        Jahrgang 13
+                    </button>
+                    <button
+                        onClick={() => { setSelectedGrade('12'); setSelectedDate(null); }}
+                        className={cn(
+                            "px-4 py-2 rounded-xl text-sm font-bold transition-all border whitespace-nowrap",
+                            selectedGrade === '12'
+                                ? "bg-purple-600 text-white border-purple-600 shadow-md"
+                                : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+                        )}
+                    >
+                        Jahrgang 12
+                    </button>
+
                     {SUBJECTS.map(s => (
                         <button
                             key={s.id}
                             onClick={() => { setSelectedSubject(s.id); setSelectedDate(null); }}
                             className={cn(
-                                "px-4 py-2 rounded-xl text-sm font-medium transition-all",
+                                "px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap",
                                 selectedSubject === s.id
                                     ? "bg-blue-600 text-white"
                                     : "bg-white text-gray-600 border border-gray-200 hover:border-blue-300"
@@ -453,11 +507,16 @@ function MaterialsContent() {
                                                                 </span>
                                                             )}
                                                             {m.lesson_hour && <span>{m.lesson_hour}. Std</span>}
+                                                            <span className="text-gray-300">•</span>
+                                                            <div className="flex items-center gap-1">
+                                                                <User size={10} />
+                                                                <span>{m.uploader?.full_name || 'Unbekannt'}</span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </button>
 
-                                                {isSmartboard && (
+                                                {(isSmartboard || user?.id === m.uploader_id) && (
                                                     <div className="flex items-center gap-1">
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); openEditModal(m); }}
@@ -519,6 +578,17 @@ function MaterialsContent() {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Jahrgang</label>
+                                    <select
+                                        value={uploadGrade}
+                                        onChange={(e) => setUploadGrade(e.target.value as '12' | '13')}
+                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
+                                    >
+                                        <option value="13">Jahrgang 13</option>
+                                        <option value="12">Jahrgang 12</option>
+                                    </select>
+                                </div>
+                                <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">Fach</label>
                                     <select
                                         value={uploadSubject}
@@ -530,18 +600,19 @@ function MaterialsContent() {
                                         ))}
                                     </select>
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Stunde</label>
-                                    <select
-                                        value={uploadLessonHour}
-                                        onChange={(e) => setUploadLessonHour(Number(e.target.value))}
-                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
-                                    >
-                                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(h => (
-                                            <option key={h} value={h}>{h}. Stunde</option>
-                                        ))}
-                                    </select>
-                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Stunde</label>
+                                <select
+                                    value={uploadLessonHour}
+                                    onChange={(e) => setUploadLessonHour(Number(e.target.value))}
+                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
+                                >
+                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(h => (
+                                        <option key={h} value={h}>{h}. Stunde</option>
+                                    ))}
+                                </select>
                             </div>
 
                             <p className="text-sm text-gray-500">
@@ -648,12 +719,14 @@ function MaterialsContent() {
                                 </button>
                             </div>
                         </div>
-                        <div className="flex-1 bg-gray-100">
-                            <iframe src={previewUrl} className="w-full h-full" title="PDF Preview" />
+                        <div className="flex-1 bg-gray-100 overflow-hidden relative">
+                            <PDFViewer url={previewUrl} />
                         </div>
                     </div>
                 </div>
             )}
+            {/* Sidebar Component */}
+            <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
         </main>
     );
 }
