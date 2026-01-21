@@ -10,8 +10,8 @@
     "lint": "eslint",
     "electron:dev": "npm run build:electron && concurrently -k \"cross-env BROWSER=none npm run dev\" \"npm run electron:wait\"",
     "electron:wait": "wait-on tcp:3000 && electron .",
-    "dist": "npm run build && npm run build:electron && electron-builder && cd dist/mac-arm64 && zip -r ../AbiturCloud_v50.zip \"Abitur Cloud.app\" && cp ../AbiturCloud_v50.zip ~/Desktop/AbiturCloud_V50_MOBILE_RELEASE/AbiturCloud_v50.zip",
-    "build:mobile": "next build",
+    "dist": "cross-env IS_STATIC_BUILD=true npm run build && npm run build:electron && electron-builder && cd dist/mac-arm64 && zip -r ../AbiturCloud_v50.zip \"Abitur Cloud.app\" && cp ../AbiturCloud_v50.zip ~/Desktop/AbiturCloud_V50_MOBILE_RELEASE/AbiturCloud_v50.zip",
+    "build:mobile": "cross-env IS_STATIC_BUILD=true next build",
     "ios:sync": "cap sync ios && cap open ios"
   },
   "build": {

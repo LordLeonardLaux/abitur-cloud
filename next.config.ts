@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
-  output: 'export',
+  output: process.env.IS_STATIC_BUILD === 'true' ? 'export' : undefined,
 
   // Ensure trailing slashes for proper file routing in Electron
   trailingSlash: true,
