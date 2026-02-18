@@ -12,7 +12,7 @@ import { SUBJECTS } from '@/lib/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
 import { Profile } from '@/lib/types';
-import { LogOut, Users, Search, X, MessageCircle, FileQuestion, BookOpen, Calendar, GraduationCap, Sparkles, ClipboardList, Shield } from 'lucide-react';
+import { LogOut, Users, Search, X, MessageCircle, FileQuestion, BookOpen, Calendar, GraduationCap, Sparkles, ClipboardList, Shield, UserPlus, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ChatWindow } from './ChatWindow';
 import { MaterialRequestModal } from './MaterialRequestModal';
@@ -145,42 +145,124 @@ export function Sidebar({ isOpen, onClose, onChatOpen }: SidebarProps) {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4">
+                {/* Search Results */}
+                {searchQuery && searchResults.length > 0 && (
+                    <div className="mb-4">
+                        <h3 className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                            <Search size={14} />
+                            Suchergebnisse
+                        </h3>
+                        <div className="space-y-1">
+                            {searchResults.map((result) => (
+                                <div key={result.id} className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
+                                    <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                                        {result.full_name?.charAt(0)}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-bold text-gray-900 truncate">{result.full_name}</p>
+                                        <p className="text-xs text-gray-400">@{result.username}</p>
+                                    </div>
+                                    <button onClick={() => sendFriendRequest(result.id)} className="p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 active:scale-95">
+                                        <UserPlus size={14} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Friend Suggestions */}
+                {!searchQuery && suggestions.length > 0 && friends.length === 0 && (
+                    <div className="mb-4">
+                        <h3 className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                            <UserPlus size={14} />
+                            Vorschläge
+                        </h3>
+                        <div className="space-y-1">
+                            {suggestions.map((sug) => (
+                                <div key={sug.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors">
+                                    <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                                        {sug.full_name?.charAt(0)}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-bold text-gray-900 truncate">{sug.full_name}</p>
+                                    </div>
+                                    <button onClick={() => sendFriendRequest(sug.id)} className="p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 active:scale-95">
+                                        <UserPlus size={14} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Pending Requests */}
+                {pendingRequests.length > 0 && (
+                    <div className="mb-4">
+                        <h3 className="flex items-center gap-2 text-xs font-bold text-amber-500 uppercase tracking-widest mb-3">
+                            <Users size={14} />
+                            Anfragen ({pendingRequests.length})
+                        </h3>
+                        <div className="space-y-1">
+                            {pendingRequests.map((req) => (
+                                <div key={req.id} className="flex items-center gap-3 p-3 rounded-xl bg-amber-50">
+                                    <div className="w-8 h-8 bg-amber-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                                        {req.profile?.full_name?.charAt(0)}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-bold text-gray-900 truncate">{req.profile?.full_name}</p>
+                                    </div>
+                                    <div className="flex gap-1">
+                                        <button onClick={() => acceptRequest(req.id)} className="p-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600 active:scale-95"><Check size={14} /></button>
+                                        <button onClick={() => rejectRequest(req.id)} className="p-1.5 bg-red-400 text-white rounded-lg hover:bg-red-500 active:scale-95"><X size={14} /></button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Friends List */}
                 <h3 className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
                     <Users size={14} />
                     Klassenkameraden
                 </h3>
-                <div className="space-y-6">
-                    {['12', '13'].map(grade => {
-                        const gradeFriends = friends.filter(f => f.grade_level === grade || (!f.grade_level && grade === '12'));
-                        if (gradeFriends.length === 0) return null;
-                        return (
-                            <div key={grade}>
-                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 pl-2">Klasse {grade}</h4>
-                                <div className="space-y-1">
-                                    {gradeFriends.map((friend) => (
-                                        <div key={friend.id} className="relative group">
-                                            <Link href={`/profile?id=${friend.id}`} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors">
-                                                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold ring-2 ring-white shadow-sm">
-                                                    {friend.full_name?.charAt(0)}
+                {friends.length === 0 && !searchQuery ? (
+                    <p className="text-sm text-gray-400 pl-2">Suche oben nach Freunden!</p>
+                ) : (
+                    <div className="space-y-6">
+                        {['12', '13'].map(grade => {
+                            const gradeFriends = friends.filter(f => f.grade_level === grade || (!f.grade_level && grade === '12'));
+                            if (gradeFriends.length === 0) return null;
+                            return (
+                                <div key={grade}>
+                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 pl-2">Klasse {grade}</h4>
+                                    <div className="space-y-1">
+                                        {gradeFriends.map((friend) => (
+                                            <div key={friend.id} className="relative group">
+                                                <Link href={`/profile?id=${friend.id}`} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors">
+                                                    <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold ring-2 ring-white shadow-sm">
+                                                        {friend.full_name?.charAt(0)}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-bold text-gray-900 truncate">{friend.full_name}</p>
+                                                    </div>
+                                                </Link>
+                                                <div className="absolute right-2 top-3 flex md:hidden group-hover:flex items-center gap-1">
+                                                    <button onClick={(e) => { e.preventDefault(); const prof = friend as any as Profile; if (onChatOpen) onChatOpen(prof); else setActiveChatFriend(prof); onClose(); }} className="p-1.5 bg-blue-500 text-white shadow-sm rounded-lg hover:bg-blue-600 transition-all active:scale-95"><MessageCircle size={14} /></button>
+                                                    <button onClick={(e) => { e.preventDefault(); setActiveChatFriend(friend as any as Profile); setIsRequestModalOpen(true); }} className="p-1.5 bg-indigo-500 text-white shadow-sm rounded-lg hover:bg-indigo-600 transition-all active:scale-95"><FileQuestion size={14} /></button>
                                                 </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-sm font-bold text-gray-900 truncate">{friend.full_name}</p>
-                                                </div>
-                                            </Link>
-                                            <div className="absolute right-2 top-3 flex md:hidden group-hover:flex items-center gap-1">
-                                                <button onClick={(e) => { e.preventDefault(); const prof = friend as any as Profile; if (onChatOpen) onChatOpen(prof); else setActiveChatFriend(prof); onClose(); }} className="p-1.5 bg-blue-500 text-white shadow-sm rounded-lg hover:bg-blue-600 transition-all active:scale-95"><MessageCircle size={14} /></button>
-                                                <button onClick={(e) => { e.preventDefault(); setActiveChatFriend(friend as any as Profile); setIsRequestModalOpen(true); }} className="p-1.5 bg-indigo-500 text-white shadow-sm rounded-lg hover:bg-indigo-600 transition-all active:scale-95"><FileQuestion size={14} /></button>
                                             </div>
-                                        </div>
-                                    ))}
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
-                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
 
-            <div className="p-4 border-t border-gray-100">
+            <div className="p-4 pb-24 md:pb-4 border-t border-gray-100">
                 <button onClick={() => signOut()} className="flex items-center gap-3 w-full p-3 text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all font-medium text-sm">
                     <LogOut size={18} />
                     <span>Abmelden</span>
@@ -195,7 +277,7 @@ export function Sidebar({ isOpen, onClose, onChatOpen }: SidebarProps) {
                 {sidebarContent}
             </aside>
             {isOpen && (
-                <div className="md:hidden fixed inset-0 z-50 flex">
+                <div className="md:hidden fixed inset-0 z-[60] flex">
                     <div className="fixed inset-0 bg-black/20 backdrop-blur-sm" onClick={onClose}></div>
                     <aside className="relative w-72 bg-white h-full shadow-2xl animate-in slide-in-from-left duration-200">
                         {sidebarContent}
