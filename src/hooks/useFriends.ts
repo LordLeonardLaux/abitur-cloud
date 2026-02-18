@@ -115,15 +115,25 @@ export function useFriends(): UseFriendsReturn {
     const sendFriendRequest = async (friendId: string) => {
         if (!user) return;
 
-        const result = await friendService.sendOrAcceptFriendRequest(user.id, friendId);
+        console.log('[useFriends] Sending friend request to:', friendId);
+        try {
+            const result = await friendService.sendOrAcceptFriendRequest(user.id, friendId);
+            console.log('[useFriends] Friend request result:', result);
 
-        if (result.success) {
-            setSentRequests(prev => [...prev, friendId]);
+            if (result.success) {
+                setSentRequests(prev => [...prev, friendId]);
+                // Remove from suggestions
+                setSuggestions(prev => prev.filter(s => s.id !== friendId));
+                setSearchResults(prev => prev.filter(s => s.id !== friendId));
 
-            if (result.action === 'accepted') {
-                // Refresh to show new friend
-                await fetchAllData();
+                if (result.action === 'accepted') {
+                    await fetchAllData();
+                }
+            } else {
+                console.warn('[useFriends] Friend request not sent:', result.action);
             }
+        } catch (error) {
+            console.error('[useFriends] Friend request error:', error);
         }
     };
 

@@ -2,9 +2,10 @@
  * Friendship Repository
  * ======================
  * Data Access Layer - Handles all friendship-related database operations.
+ * Uses Supabase SDK directly for reliable auth and error handling.
  */
 
-import { supabaseFetch } from './baseRepository';
+import { supabase } from '@/lib/supabase/client';
 
 // ============================================================================
 // TYPES
@@ -32,13 +33,19 @@ export interface FriendshipWithProfile extends Friendship {
 
 /**
  * Fetches all accepted friendships for a user.
- * Returns the IDs of the user's friends.
  */
 export async function getAcceptedFriendships(userId: string): Promise<Friendship[]> {
-    const friendships = await supabaseFetch<Friendship[]>(
-        `friendships?or=(user_id.eq.${userId},friend_id.eq.${userId})&status=eq.accepted`
-    );
-    return friendships || [];
+    const { data, error } = await supabase
+        .from('friendships')
+        .select('*')
+        .or(`user_id.eq.${userId},friend_id.eq.${userId}`)
+        .eq('status', 'accepted');
+
+    if (error) {
+        console.error('[friendshipRepo] getAcceptedFriendships error:', error);
+        return [];
+    }
+    return data || [];
 }
 
 /**
@@ -54,10 +61,17 @@ export function extractFriendIds(userId: string, friendships: Friendship[]): str
  * Fetches pending friendship requests sent to a user.
  */
 export async function getPendingRequests(userId: string): Promise<Friendship[]> {
-    const requests = await supabaseFetch<Friendship[]>(
-        `friendships?friend_id=eq.${userId}&status=eq.pending`
-    );
-    return requests || [];
+    const { data, error } = await supabase
+        .from('friendships')
+        .select('*')
+        .eq('friend_id', userId)
+        .eq('status', 'pending');
+
+    if (error) {
+        console.error('[friendshipRepo] getPendingRequests error:', error);
+        return [];
+    }
+    return data || [];
 }
 
 /**
@@ -67,10 +81,18 @@ export async function checkExistingFriendship(
     userId: string,
     friendId: string
 ): Promise<Friendship | null> {
-    const existing = await supabaseFetch<Friendship[]>(
-        `friendships?or=(and(user_id.eq.${userId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${userId}))`
-    );
-    return existing?.[0] || null;
+    const { data, error } = await supabase
+        .from('friendships')
+        .select('*')
+        .or(
+            `and(user_id.eq.${userId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${userId})`
+        );
+
+    if (error) {
+        console.error('[friendshipRepo] checkExistingFriendship error:', error);
+        return null;
+    }
+    return data?.[0] || null;
 }
 
 // ============================================================================
@@ -84,15 +106,23 @@ export async function createFriendshipRequest(
     userId: string,
     friendId: string
 ): Promise<boolean> {
-    const result = await supabaseFetch<Friendship>(
-        'friendships',
-        {
-            method: 'POST',
-            body: { user_id: userId, friend_id: friendId, status: 'pending' },
-            preferReturn: 'minimal',
-        }
-    );
-    return result !== null;
+    console.log('[friendshipRepo] Creating friendship request:', userId, '->', friendId);
+
+    const { error } = await supabase
+        .from('friendships')
+        .insert({
+            user_id: userId,
+            friend_id: friendId,
+            status: 'pending',
+        });
+
+    if (error) {
+        console.error('[friendshipRepo] createFriendshipRequest error:', error);
+        return false;
+    }
+
+    console.log('[friendshipRepo] Friendship request created successfully');
+    return true;
 }
 
 /**
@@ -102,24 +132,30 @@ export async function updateFriendshipStatus(
     friendshipId: string,
     status: 'accepted' | 'rejected'
 ): Promise<boolean> {
-    const result = await supabaseFetch<Friendship>(
-        `friendships?id=eq.${friendshipId}`,
-        {
-            method: 'PATCH',
-            body: { status },
-            preferReturn: 'minimal',
-        }
-    );
-    return result !== null;
+    const { error } = await supabase
+        .from('friendships')
+        .update({ status })
+        .eq('id', friendshipId);
+
+    if (error) {
+        console.error('[friendshipRepo] updateFriendshipStatus error:', error);
+        return false;
+    }
+    return true;
 }
 
 /**
  * Deletes a friendship request.
  */
 export async function deleteFriendship(friendshipId: string): Promise<boolean> {
-    const result = await supabaseFetch<null>(
-        `friendships?id=eq.${friendshipId}`,
-        { method: 'DELETE' }
-    );
-    return true; // DELETE returns empty, so we assume success if no error
+    const { error } = await supabase
+        .from('friendships')
+        .delete()
+        .eq('id', friendshipId);
+
+    if (error) {
+        console.error('[friendshipRepo] deleteFriendship error:', error);
+        return false;
+    }
+    return true;
 }

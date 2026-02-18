@@ -39,6 +39,7 @@ export function Sidebar({ isOpen, onClose, onChatOpen }: SidebarProps) {
         sendFriendRequest,
         acceptRequest,
         rejectRequest,
+        sentRequests,
     } = useFriends();
 
     const [searchQuery, setSearchQuery] = useState('');
@@ -177,26 +178,35 @@ export function Sidebar({ isOpen, onClose, onChatOpen }: SidebarProps) {
                 )}
 
                 {/* Friend Suggestions */}
-                {!searchQuery && suggestions.length > 0 && friends.length === 0 && (
+                {!searchQuery && suggestions.length > 0 && (
                     <div className="mb-4">
                         <h3 className="flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
                             <UserPlus size={14} />
                             Vorschläge
                         </h3>
                         <div className="space-y-1">
-                            {suggestions.map((sug) => (
-                                <div key={sug.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors">
-                                    <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                                        {sug.full_name?.charAt(0)}
+                            {suggestions.map((sug) => {
+                                const isSent = sentRequests.includes(sug.id);
+                                return (
+                                    <div key={sug.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors">
+                                        <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                                            {sug.full_name?.charAt(0)}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-bold text-gray-900 truncate">{sug.full_name}</p>
+                                        </div>
+                                        {isSent ? (
+                                            <span className="p-1.5 bg-green-100 text-green-600 rounded-lg text-xs font-bold">
+                                                <Check size={14} />
+                                            </span>
+                                        ) : (
+                                            <button onClick={() => sendFriendRequest(sug.id)} className="p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 active:scale-95">
+                                                <UserPlus size={14} />
+                                            </button>
+                                        )}
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-bold text-gray-900 truncate">{sug.full_name}</p>
-                                    </div>
-                                    <button onClick={() => sendFriendRequest(sug.id)} className="p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 active:scale-95">
-                                        <UserPlus size={14} />
-                                    </button>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 )}
