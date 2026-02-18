@@ -88,7 +88,7 @@ export function Sidebar({ isOpen, onClose, onChatOpen }: SidebarProps) {
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    {profile?.role !== 'teacher' && <TaskHub />}
+                    {profile?.role !== 'teacher' && <div className="hidden md:block"><TaskHub /></div>}
                     <button onClick={onClose} className="md:hidden text-gray-500 hover:bg-gray-100 p-2 rounded-lg">
                         <X size={20} />
                     </button>

@@ -107,13 +107,17 @@ export async function supabaseFetch<T>(
         );
 
         if (!response.ok) {
-            console.error(`[BaseRepository] Fetch failed: ${response.status} ${response.statusText}`);
+            const errText = await response.text();
+            console.error(`[BaseRepository] Fetch failed: ${response.status} ${response.statusText}`, errText);
             return null;
         }
 
-        // Handle empty responses (e.g., DELETE with return=minimal)
+        // Handle empty responses (e.g., POST/DELETE with return=minimal → 201/204)
         const text = await response.text();
-        if (!text) return null;
+        if (!text) {
+            // Return a truthy marker for successful empty responses
+            return {} as T;
+        }
 
         return JSON.parse(text) as T;
     } catch (error) {
