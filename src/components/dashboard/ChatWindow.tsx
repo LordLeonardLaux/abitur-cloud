@@ -219,13 +219,15 @@ export function ChatWindow({ friend, currentUser, onClose, isInline = false }: C
                         >
                             <div
                                 className={cn(
-                                    "p-3 rounded-2xl text-sm shadow-sm",
+                                    "p-3 rounded-2xl text-sm shadow-sm overflow-hidden",
                                     msg.sender_id === currentUser.id
                                         ? "bg-blue-600 text-white rounded-tr-none"
                                         : "bg-white text-gray-800 border border-gray-100 rounded-tl-none"
                                 )}
                             >
-                                <p>{msg.content}</p>
+                                <p className="whitespace-pre-wrap break-words overflow-x-auto max-w-full">
+                                    {msg.content}
+                                </p>
                             </div>
                             <span className="text-[10px] text-gray-400 mt-1 px-1">
                                 {format(new Date(msg.created_at || Date.now()), 'HH:mm', { locale: de })}

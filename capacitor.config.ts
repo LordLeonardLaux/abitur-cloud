@@ -1,7 +1,7 @@
 import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-    appId: 'com.lordleonardlaux.abiturcloud',
+    appId: 'com.lordleonardlaux.abiturcloud.app',
     appName: 'Abitur Cloud',
     webDir: 'out',
     server: {

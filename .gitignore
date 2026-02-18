@@ -41,3 +41,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.env.secret
+
+builds/
+*.zip
+debug-admin.log
+worker.base64*.txt

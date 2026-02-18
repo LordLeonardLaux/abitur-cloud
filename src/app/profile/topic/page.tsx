@@ -50,10 +50,28 @@ function FriendTopicContent() {
     }, [topicId, friendId, subjectId, semester]);
 
     useEffect(() => {
-        if (selectedFileIndex !== -1 && files[selectedFileIndex]) {
-            const { data } = supabase.storage.from('topic-files').getPublicUrl(files[selectedFileIndex].storage_path);
-            setPdfUrl(data.publicUrl);
-        } else setPdfUrl(null);
+        const loadPdf = async () => {
+            if (selectedFileIndex !== -1 && files[selectedFileIndex]) {
+                const storagePath = files[selectedFileIndex].storage_path;
+
+                // Use signed URL for better performance and reliability
+                const { data, error } = await supabase.storage.from('topic-files').createSignedUrl(storagePath, 3600);
+
+                if (error) {
+                    console.error("Error creating friend signed PDF URL:", error);
+                    setPdfUrl(null);
+                    return;
+                }
+
+                if (data?.signedUrl) {
+                    setPdfUrl(data.signedUrl);
+                }
+            } else {
+                setPdfUrl(null);
+            }
+        };
+
+        loadPdf();
     }, [selectedFileIndex, files]);
 
     const navigateTopic = (direction: 'next' | 'prev') => {
@@ -182,7 +200,7 @@ function FriendTopicContent() {
                     </div>
 
                     <div className="flex-1 w-full h-full overflow-hidden relative">
-                        <PDFViewer url={pdfUrl} />
+                        <PDFViewer url={pdfUrl} topicId={topicId || undefined} />
                     </div>
                 </div>
             </div>

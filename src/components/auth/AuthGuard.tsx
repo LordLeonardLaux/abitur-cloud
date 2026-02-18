@@ -5,10 +5,10 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
 
-const publicRoutes = ['/login', '/signup'];
+const publicRoutes = ['/login', '/signup', '/auth/reset-password', '/auth/pending'];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-    const { user, loading } = useAuth();
+    const { user, profile, loading } = useAuth(); // Destructure profile
     const router = useRouter();
     const pathname = usePathname();
     // Normalize pathname to remove trailing slash for consistent matching
@@ -16,6 +16,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
     useEffect(() => {
         if (!loading) {
+            // Case 1: Not logged in
             if (!user && !publicRoutes.includes(normalizedPath)) {
                 // Determine valid redirect path
                 if (pathname === '/' || pathname === '') {
@@ -23,11 +24,17 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
                 } else {
                     router.push('/login');
                 }
-            } else if (user && publicRoutes.includes(normalizedPath)) {
+            }
+            // Case 2: Logged in but NOT approved (and not already on pending page)
+            else if (user && profile && !profile.is_approved && normalizedPath !== '/auth/pending') {
+                router.push('/auth/pending');
+            }
+            // Case 3: Logged in AND approved (and tries to access public route like login)
+            else if (user && profile?.is_approved && publicRoutes.includes(normalizedPath) && normalizedPath !== '/auth/pending') {
                 router.push('/dashboard');
             }
         }
-    }, [user, loading, normalizedPath, pathname, router]);
+    }, [user, profile, loading, normalizedPath, pathname, router]);
 
     if (loading) {
         return (

@@ -4,7 +4,9 @@ export interface Profile {
     full_name: string;
     avatar_url: string | null;
     grade_level?: string;
-    role?: 'student' | 'smartboard';
+    role?: 'student' | 'smartboard' | 'teacher' | 'admin';
+    subjects?: string[]; // For teachers: list of subject_ids they teach
+    is_approved?: boolean;
 }
 
 export interface Exam {
@@ -28,6 +30,20 @@ export interface ClassMaterial {
     grade_level: string; // '12' or '13'
     created_at: string;
     uploader?: Profile; // Joined data
+}
+
+export interface TeacherMaterial {
+    id: string;
+    teacher_id: string;
+    subject_id: string;
+    semester?: string; // Optional: 'Q1', 'Q2', 'Q3', 'Q4'
+    grade_level: string; // '12' or '13'
+    material_date?: string; // Optional: for calendar
+    lesson_hour?: number; // Optional: for calendar
+    file_name: string;
+    storage_path: string;
+    created_at: string;
+    teacher?: Profile; // Joined data
 }
 
 export interface Topic {

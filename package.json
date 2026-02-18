@@ -1,16 +1,16 @@
 {
   "name": "abitur-cloud",
-  "version": "0.5.0",
+  "version": "0.9.22",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/ && next dev",
+    "build": "cp node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/ && next build",
     "build:electron": "tsc -p tsconfig.electron.json",
     "start": "next start",
     "lint": "eslint",
     "electron:dev": "npm run build:electron && concurrently -k \"cross-env BROWSER=none npm run dev\" \"npm run electron:wait\"",
     "electron:wait": "wait-on tcp:3000 && electron .",
-    "dist": "cross-env IS_STATIC_BUILD=true npm run build && npm run build:electron && electron-builder && cd dist/mac-arm64 && zip -r ../AbiturCloud_v50.zip \"Abitur Cloud.app\" && cp ../AbiturCloud_v50.zip ~/Desktop/AbiturCloud_V50_MOBILE_RELEASE/AbiturCloud_v50.zip",
+    "dist": "cross-env IS_STATIC_BUILD=true npm run build && npm run build:electron && electron-builder && cd dist/mac-arm64 && zip -r ~/Desktop/AbiturCloud_v0915.zip \"Abitur Cloud.app\"",
     "build:mobile": "cross-env IS_STATIC_BUILD=true next build",
     "ios:sync": "cap sync ios && cap open ios"
   },
@@ -37,6 +37,9 @@
       "out/**/*",
       "dist-electron/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      ".env"
     ]
   },
   "dependencies": {
@@ -45,17 +48,23 @@
     "@capacitor/ios": "^8.0.1",
     "@capacitor/keyboard": "^8.0.0",
     "@capacitor/status-bar": "^8.0.0",
+    "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.89.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "dotenv": "^16.4.7",
     "electron-serve": "^3.0.0",
     "framer-motion": "^12.23.26",
     "jimp": "^1.6.0",
+    "jspdf": "^4.1.0",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-markdown": "^10.1.0",
+    "react-onesignal": "^3.4.6",
     "react-pdf": "^10.3.0",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {

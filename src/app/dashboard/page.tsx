@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { SUBJECTS } from '@/lib/constants';
 import { useAuth } from '@/contexts/AuthContext';
-import { BookOpen, Calendar } from 'lucide-react';
+import { BookOpen, Calendar, GraduationCap } from 'lucide-react';
 import { GradeMigrationModal } from '@/components/GradeMigrationModal';
 import { cn } from '@/lib/utils';
 import { Sidebar } from '@/components/dashboard/Sidebar';
@@ -144,7 +144,22 @@ export default function DashboardPage() {
                         )}
 
                         {/* Quick Access Tiles - Below Subjects */}
-                        <div className="grid grid-cols-2 gap-3 md:gap-4 mt-8">
+                        <div className={cn(
+                            "grid gap-3 md:gap-4 mt-8",
+                            profile?.role === 'teacher' ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2"
+                        )}>
+                            {profile?.role === 'teacher' && (
+                                <Link href="/teacher/dashboard" className="group relative overflow-hidden bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-4 md:p-6 shadow-sm hover:shadow-md transition-all">
+                                    <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 rounded-full bg-white/10 blur-2xl"></div>
+                                    <div className="relative z-10 flex flex-col h-full justify-between text-white">
+                                        <GraduationCap className="w-6 h-6 md:w-8 md:h-8 mb-3 md:mb-4 opacity-90" />
+                                        <div>
+                                            <h3 className="text-sm md:text-lg font-bold">Lehrer-Dashboard</h3>
+                                            <p className="text-amber-100 text-[10px] md:text-xs mt-1">Materialverwaltung</p>
+                                        </div>
+                                    </div>
+                                </Link>
+                            )}
                             <Link href="/exams" className="group relative overflow-hidden bg-gradient-to-br from-indigo-600 to-violet-600 rounded-2xl p-4 md:p-6 shadow-sm hover:shadow-md transition-all">
                                 <div className="absolute top-0 right-0 -mr-4 -mt-4 w-24 h-24 rounded-full bg-white/10 blur-2xl"></div>
                                 <div className="relative z-10 flex flex-col h-full justify-between text-white">

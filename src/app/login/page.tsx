@@ -74,13 +74,12 @@ export default function LoginPage() {
     }
 
     return (
-        <main className="min-h-screen flex items-center justify-center bg-blue-600 px-4">
-            <div className="w-full max-w-sm space-y-8 bg-white p-8 rounded-2xl shadow-2xl border border-white/20">
+        <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+            <div className="w-full max-w-sm space-y-8 bg-white p-8 rounded-2xl shadow-xl border border-gray-100">
                 <div className="text-center">
+                    <img src="/logo.png" alt="Logo" className="w-20 h-20 mx-auto mb-4 object-contain" />
                     <h1 className="text-3xl font-bold tracking-tight text-gray-900">Abitur Cloud</h1>
-                    <div className="mt-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 animate-pulse">
-                        v50 (App Store Ready) 🚀
-                    </div>
+                    <p className="mt-2 text-sm text-gray-600">Willkommen zurück!</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="mt-8 space-y-6">
@@ -109,6 +108,14 @@ export default function LoginPage() {
                                 placeholder="••••••••"
                             />
                         </div>
+                        <div className="text-right">
+                            <Link
+                                href="/auth/forgot-password"
+                                className="text-xs font-medium text-blue-600 hover:text-blue-500"
+                            >
+                                Passwort vergessen?
+                            </Link>
+                        </div>
                     </div>
 
                     {error && (
@@ -132,6 +139,9 @@ export default function LoginPage() {
                         </Link>
                     </p>
                 </form>
+                <div className="mt-6 pt-4 border-t border-gray-50 text-center">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-300">v0.6.9</span>
+                </div>
             </div>
         </main>
     );

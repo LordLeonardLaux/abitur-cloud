@@ -5,13 +5,15 @@ import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
+import { formatGrade } from '@/lib/utils';
 
-export default function SignupPage() {
+import { sendNotification } from '@/lib/notifications';
+
+export default function Signup() {
     const router = useRouter();
+    const [fullName, setFullName] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [success, setSuccess] = useState(false);
-    // const supabase = createClient(); // uses singleton
 
     async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
@@ -23,75 +25,75 @@ export default function SignupPage() {
         const password = formData.get('password') as string;
         const username = formData.get('username') as string;
         const fullName = formData.get('fullName') as string;
+        const gradeLevel = formData.get('gradeLevel') as string;
 
-        const { data, error: signUpError } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-                data: {
-                    username,
-                    full_name: fullName,
-                }
-            }
-        });
-
-        if (signUpError) {
-            setError(signUpError.message);
+        if (password.length < 6) {
+            setError('Passwort muss mindestens 6 Zeichen lang sein.');
             setLoading(false);
             return;
         }
 
-        // Create profile record
-        if (data.user) {
+        try {
+            // 1. Create Auth User
+            const { data: authData, error: authError } = await supabase.auth.signUp({
+                email,
+                password,
+                options: {
+                    data: {
+                        full_name: fullName,
+                        username: username,
+                    }
+                }
+            });
+
+            if (authError) throw authError;
+            if (!authData.user) throw new Error('Benutzer konnte nicht erstellt werden.');
+
+            // 2. Create Profile (is_approved = false by default in DB, but we can set it explicitly to be safe)
+            // Note: Triggers might handle this, but explicit is better for this flow changes
             const { error: profileError } = await supabase
                 .from('profiles')
-                .insert({
-                    id: data.user.id,
-                    username,
+                .upsert({
+                    id: authData.user.id,
+                    email: email,
+                    username: username,
                     full_name: fullName,
-                    grade_level: formData.get('gradeLevel') as string,
-                    avatar_url: null,
+                    grade_level: gradeLevel,
+                    role: gradeLevel === 'teacher' ? 'teacher' : 'student',
+                    is_approved: false
                 });
 
             if (profileError) {
-                setError(profileError.message);
-                setLoading(false);
-                return;
+                console.error('Profile creation error:', profileError);
+                // Continue anyway, user exists in auth
             }
+
+            // 3. Notify Admins (Placeholder for real admin ID logic)
+            // Ideally we fetch admin IDs or send to a segment/topic "Admins"
+            sendNotification(
+                ['admin-segment'], // Placeholder for admin segment/tag
+                'Neue Registrierung',
+                `${fullName} (${username}) bittet um Zugang.`
+            );
+
+            // 4. Redirect to Pending
+            router.push('/auth/pending');
+
+        } catch (err: any) {
+            console.error('[Signup] Error:', err);
+            setError(err.message || 'Ein Fehler ist aufgetreten.');
+        } finally {
+            setLoading(false);
         }
-
-        setSuccess(true);
-        setLoading(false);
-    }
-
-    if (success) {
-        return (
-            <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-                <div className="w-full max-w-sm space-y-6 bg-white p-8 rounded-2xl shadow-xl border border-gray-100 text-center">
-                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-                        <span className="text-3xl">✓</span>
-                    </div>
-                    <h1 className="text-2xl font-bold text-gray-900">Registrierung erfolgreich!</h1>
-                    <p className="text-gray-600">
-                        Bitte prüfe deine E-Mails und bestätige deinen Account.
-                    </p>
-                    <Link
-                        href="/login"
-                        className="inline-block w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-500 transition-colors"
-                    >
-                        Zum Login
-                    </Link>
-                </div>
-            </main>
-        );
     }
 
     return (
-        <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-            <div className="w-full max-w-sm space-y-8 bg-white p-8 rounded-2xl shadow-xl border border-gray-100">
+        <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4 pt-12 pb-12">
+            <div className="w-full max-w-md space-y-8 bg-white p-8 rounded-2xl shadow-xl border border-gray-100">
                 <div className="text-center">
-                    <h1 className="text-3xl font-bold tracking-tight text-gray-900">Registrieren</h1>
-                    <p className="mt-2 text-sm text-gray-600">Erstelle deinen Abitur Cloud Account</p>
+                    <img src="/logo.png" alt="Logo" className="w-20 h-20 mx-auto mb-4 object-contain" />
+                    <h1 className="text-3xl font-bold tracking-tight text-gray-900">Abitur Cloud</h1>
+                    <p className="mt-2 text-sm text-gray-600">Erstelle dein kostenloses Konto</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="mt-8 space-y-6">
@@ -119,30 +121,15 @@ export default function SignupPage() {
                             />
                         </div>
                         <div>
-                            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">E-Mail</label>
+                            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">E-Mail Adresse</label>
                             <input
                                 id="email"
                                 name="email"
                                 type="email"
-                                autoComplete="email"
                                 required
                                 className="block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500 transition-colors"
                                 placeholder="deine@email.de"
                             />
-
-                        </div>
-                        <div>
-                            <label htmlFor="gradeLevel" className="block text-sm font-medium text-gray-700 mb-1">Jahrgangsstufe</label>
-                            <select
-                                id="gradeLevel"
-                                name="gradeLevel"
-                                required
-                                className="block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 focus:border-blue-500 focus:ring-blue-500 transition-colors"
-                            >
-                                <option value="" disabled selected>Bitte wählen...</option>
-                                <option value="12">Klasse 12</option>
-                                <option value="13">Klasse 13</option>
-                            </select>
                         </div>
                         <div>
                             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Passwort</label>
@@ -150,13 +137,32 @@ export default function SignupPage() {
                                 id="password"
                                 name="password"
                                 type="password"
-                                autoComplete="new-password"
                                 required
                                 minLength={6}
                                 className="block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500 transition-colors"
-                                placeholder="Mindestens 6 Zeichen"
+                                placeholder="••••••••"
                             />
                         </div>
+                        <div>
+                            <label htmlFor="gradeLevel" className="block text-sm font-medium text-gray-700 mb-1">Jahrgangsstufe / Rolle</label>
+                            <select
+                                id="gradeLevel"
+                                name="gradeLevel"
+                                required
+                                className="block w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 focus:border-blue-500 focus:ring-blue-500 transition-colors"
+                            >
+                                <option value="" disabled selected>Bitte wählen...</option>
+                                <option value="12">{formatGrade('12')}</option>
+                                <option value="13">{formatGrade('13')}</option>
+                                <option value="teacher">Lehrer/In</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
+                        <p className="text-xs text-blue-800 leading-relaxed">
+                            <strong>Info:</strong> Nach der Registrierung muss dein Account erst von einem Admin freigeschaltet werden.
+                        </p>
                     </div>
 
                     {error && (
@@ -170,7 +176,7 @@ export default function SignupPage() {
                         disabled={loading}
                         className="group relative flex w-full justify-center rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
                     >
-                        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Account erstellen'}
+                        {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Registrieren'}
                     </button>
 
                     <p className="text-center text-sm text-gray-500">

@@ -6,8 +6,8 @@ import { supabase } from '@/lib/supabase/client';
 import { SUBJECTS } from '@/lib/constants';
 import { ClassMaterial, Profile } from '@/lib/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { ChevronLeft, ChevronRight, Upload, Download, FileText, Calendar, Trash2, Edit3, X, Search, Loader2, User } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { ChevronLeft, ChevronRight, Upload, Download, FileText, Calendar, Trash2, Edit3, X, Search, Loader2, User, GraduationCap } from 'lucide-react';
+import { cn, formatGrade } from '@/lib/utils';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import PDFViewer from '@/components/ui/PDFViewer';
 
@@ -29,6 +29,7 @@ function MaterialsContent() {
     const { user } = useAuth();
     const [profile, setProfile] = useState<Profile | null>(null);
     const [materials, setMaterials] = useState<ClassMaterial[]>([]);
+    const [teacherMaterials, setTeacherMaterials] = useState<any[]>([]);
     const [selectedGrade, setSelectedGrade] = useState<'12' | '13'>('13'); // Default to 13
     const [selectedSubject, setSelectedSubject] = useState<string>('all');
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -73,39 +74,48 @@ function MaterialsContent() {
     useEffect(() => {
         const fetchMaterials = async () => {
             let query = supabase.from('class_materials').select('*');
+            let teacherQuery = supabase.from('teacher_materials').select('*, teacher:profiles(*)');
 
             if (debouncedSearchTerm) {
                 // Search Mode
                 query = query.ilike('file_name', `%${debouncedSearchTerm}%`);
+                teacherQuery = teacherQuery.ilike('file_name', `%${debouncedSearchTerm}%`);
             } else {
                 // Calendar Mode
                 const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
                 const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
-                query = query
-                    .gte('material_date', startOfMonth.toISOString().split('T')[0])
-                    .lte('material_date', endOfMonth.toISOString().split('T')[0]);
+                const startStr = startOfMonth.toISOString().split('T')[0];
+                const endStr = endOfMonth.toISOString().split('T')[0];
+
+                query = query.gte('material_date', startStr).lte('material_date', endStr);
+                teacherQuery = teacherQuery.gte('material_date', startStr).lte('material_date', endStr);
             }
 
             if (selectedSubject !== 'all') {
                 query = query.eq('subject_id', selectedSubject);
+                teacherQuery = teacherQuery.eq('subject_id', selectedSubject);
             }
 
-            query = query
-                .eq('grade_level', selectedGrade)
-                .order('material_date', { ascending: false });
+            query = query.eq('grade_level', selectedGrade).order('material_date', { ascending: false });
+            teacherQuery = teacherQuery.eq('grade_level', selectedGrade).order('material_date', { ascending: false });
 
-            const { data, error } = await query;
-            if (error) console.error("Error fetching materials:", error);
+            const [materialsRes, teacherRes] = await Promise.all([query, teacherQuery]);
 
-            // Join profile data manually for now (or could use use view)
-            if (data) {
-                const materialsWithProfiles = await Promise.all(data.map(async (m) => {
+            // Join profile data for class_materials
+            if (materialsRes.data) {
+                const materialsWithProfiles = await Promise.all(materialsRes.data.map(async (m) => {
                     const { data: profileData } = await supabase.from('profiles').select('*').eq('id', m.uploader_id).single();
                     return { ...m, uploader: profileData } as ClassMaterial;
                 }));
                 setMaterials(materialsWithProfiles);
             } else {
                 setMaterials([]);
+            }
+
+            if (teacherRes.data) {
+                setTeacherMaterials(teacherRes.data);
+            } else {
+                setTeacherMaterials([]);
             }
         };
         fetchMaterials();
@@ -114,20 +124,21 @@ function MaterialsContent() {
     useEffect(() => {
         if (debouncedSearchTerm) {
             // Search Mode: Show all matches
-            setDisplayMaterials(materials);
+            setDisplayMaterials([...materials, ...teacherMaterials]);
         } else if (selectedDate) {
             // Calendar Mode: Show selected day
-            const filtered = materials.filter(m => m.material_date === selectedDate);
-            setDisplayMaterials(filtered);
+            const filteredStudent = materials.filter(m => m.material_date === selectedDate);
+            const filteredTeacher = teacherMaterials.filter(m => m.material_date === selectedDate);
+            setDisplayMaterials([...filteredStudent, ...filteredTeacher]);
         } else {
             // Calendar Mode: No day selected
             setDisplayMaterials([]);
         }
-    }, [selectedDate, materials, debouncedSearchTerm]);
+    }, [selectedDate, materials, teacherMaterials, debouncedSearchTerm]);
 
     // Handle file selection - opens modal
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files || !e.target.files[0] || !isSmartboard) return;
+        if (!e.target.files || !e.target.files[0]) return; // Removed isSmartboard check so everyone can upload
         const file = e.target.files[0];
         setPendingFile(file);
         setUploadFileName(file.name.replace(/\.[^/.]+$/, '')); // Remove extension
@@ -222,11 +233,14 @@ function MaterialsContent() {
         }
     };
 
-    const handlePreview = async (m: ClassMaterial) => {
+    const handlePreview = async (m: any) => {
+        const isTeacher = 'teacher' in m;
+        const bucket = isTeacher ? 'teacher-materials' : 'materials';
         try {
-            const { data } = await supabase.storage.from('materials').createSignedUrl(m.storage_path, 3600);
-            if (data?.signedUrl) {
-                setPreviewUrl(data.signedUrl);
+            // Using getPublicUrl instead of createSignedUrl due to server storage issues
+            const { data } = supabase.storage.from(bucket).getPublicUrl(m.storage_path);
+            if (data?.publicUrl) {
+                setPreviewUrl(`${data.publicUrl}?t=${Date.now()}`);
                 setPreviewFile(m);
             }
         } catch (error) {
@@ -249,7 +263,7 @@ function MaterialsContent() {
 
     const hasContentOnDay = (day: number) => {
         const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        return materials.some(m => m.material_date === dateStr);
+        return materials.some(m => m.material_date === dateStr) || teacherMaterials.some(m => m.material_date === dateStr);
     };
 
     const getDateString = (day: number) => {
@@ -260,474 +274,508 @@ function MaterialsContent() {
     const weekDays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
     return (
-        <main className="min-h-screen bg-gray-50 p-4 md:p-8">
-            <div className="max-w-6xl mx-auto space-y-8">
-                {/* Header */}
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 md:gap-6 px-2 md:px-0">
-                    <div className="flex items-center justify-between w-full lg:w-auto">
-                        <div className="flex items-center gap-3">
-                            <Link href="/dashboard" className="p-2 -ml-2 rounded-full hover:bg-gray-200">
-                                <ChevronLeft className="w-6 h-6 text-gray-600" />
-                            </Link>
-                            <div>
-                                <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">Material</h1>
-                                <p className="text-gray-500 text-xs md:text-sm">
-                                    {debouncedSearchTerm ? 'Suche' : 'Smartboard-Mitschriften'}
-                                </p>
-                            </div>
-                        </div>
-                        {/* Mobile Burger Menu Inline */}
-                        <button
-                            onClick={() => setIsSidebarOpen(true)}
-                            className="md:hidden p-2 bg-white border border-gray-100 shadow-sm rounded-xl text-gray-900 active:scale-95"
-                        >
-                            <Search size={22} className="hidden" /> {/* Placeholder/Icon shift logic if needed */}
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-                        </button>
-                    </div>
-
-                    <div className="flex items-center gap-4 flex-1 lg:justify-end">
-                        {/* Search Bar */}
-                        <div className="relative w-full max-w-md">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                            <input
-                                type="text"
-                                placeholder="Mitschriften suchen..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-9 pr-4 py-2.5 bg-white rounded-xl text-sm border border-gray-200 focus:ring-2 focus:ring-blue-500 shadow-sm"
-                            />
-                        </div>
-
-                        {/* Upload Button */}
-                        <label className={cn(
-                            "flex items-center gap-2 px-4 py-2.5 rounded-xl cursor-pointer transition-all shadow-md active:scale-95 flex-shrink-0",
-                            uploading
-                                ? "bg-gray-300 text-gray-500"
-                                : "bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700"
-                        )}>
-                            {uploading ? <Loader2 className="animate-spin w-5 h-5" /> : <Upload className="w-5 h-5" />}
-                            <span className="font-bold hidden sm:inline">Hochladen</span>
-                            <input
-                                type="file"
-                                accept="application/pdf,image/*"
-                                className="hidden"
-                                onChange={handleFileSelect}
-                                disabled={uploading}
-                            />
-                        </label>
-
-                    </div>
-                </div>
-
-                {/* Subject Tabs - Scrollable on mobile */}
-                <div className="flex overflow-x-auto pb-2 -mx-2 px-2 md:mx-0 md:px-0 scrollbar-hide gap-2 no-scrollbar">
-                    <button
-                        onClick={() => { setSelectedSubject('all'); setSelectedDate(null); }}
-                        className={cn(
-                            "px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap",
-                            selectedSubject === 'all'
-                                ? "bg-black text-white"
-                                : "bg-white text-gray-600 border border-gray-200 hover:border-black"
-                        )}
-                    >
-                        Alle
-                    </button>
-
-                    <button
-                        onClick={() => { setSelectedGrade('13'); setSelectedDate(null); }}
-                        className={cn(
-                            "px-4 py-2 rounded-xl text-sm font-bold transition-all border whitespace-nowrap",
-                            selectedGrade === '13'
-                                ? "bg-purple-600 text-white border-purple-600 shadow-md"
-                                : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
-                        )}
-                    >
-                        Jahrgang 13
-                    </button>
-                    <button
-                        onClick={() => { setSelectedGrade('12'); setSelectedDate(null); }}
-                        className={cn(
-                            "px-4 py-2 rounded-xl text-sm font-bold transition-all border whitespace-nowrap",
-                            selectedGrade === '12'
-                                ? "bg-purple-600 text-white border-purple-600 shadow-md"
-                                : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
-                        )}
-                    >
-                        Jahrgang 12
-                    </button>
-
-                    {SUBJECTS.map(s => (
-                        <button
-                            key={s.id}
-                            onClick={() => { setSelectedSubject(s.id); setSelectedDate(null); }}
-                            className={cn(
-                                "px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap",
-                                selectedSubject === s.id
-                                    ? "bg-blue-600 text-white"
-                                    : "bg-white text-gray-600 border border-gray-200 hover:border-blue-300"
-                            )}
-                        >
-                            {s.name}
-                        </button>
-                    ))}
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* Calendar (Disabled visually or just dimmed when searching) */}
-                    <div className={cn("bg-white rounded-2xl shadow-lg p-6 transition-opacity", debouncedSearchTerm && "opacity-50 pointer-events-none")}>
-                        <div className="flex items-center justify-between mb-6">
-                            <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))} className="p-2 hover:bg-gray-100 rounded-lg">
-                                <ChevronLeft size={20} />
-                            </button>
-                            <h2 className="text-xl font-bold text-gray-900">
-                                {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-                            </h2>
-                            <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))} className="p-2 hover:bg-gray-100 rounded-lg">
-                                <ChevronRight size={20} />
-                            </button>
-                        </div>
-
-                        <div className="grid grid-cols-7 gap-1 mb-2">
-                            {weekDays.map(d => (
-                                <div key={d} className="text-center text-xs font-bold text-gray-400 py-2">{d}</div>
-                            ))}
-                        </div>
-
-                        <div className="grid grid-cols-7 gap-1">
-                            {getDaysInMonth().map((day, idx) => (
+        <div className="flex min-h-screen bg-gray-50">
+            <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+            <div className="flex-1 flex flex-col min-w-0">
+                <main className="flex-1 p-4 md:p-8">
+                    <div className="max-w-6xl mx-auto space-y-8">
+                        {/* Header */}
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 md:gap-6 px-2 md:px-0">
+                            <div className="flex items-center justify-between w-full lg:w-auto">
+                                <div className="flex items-center gap-3">
+                                    <Link href="/dashboard" className="p-2 -ml-2 rounded-full hover:bg-gray-200">
+                                        <ChevronLeft className="w-6 h-6 text-gray-600" />
+                                    </Link>
+                                    <div>
+                                        <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">Material</h1>
+                                        <p className="text-gray-500 text-xs md:text-sm">
+                                            {debouncedSearchTerm ? 'Suche' : 'Smartboard-Mitschriften'}
+                                        </p>
+                                    </div>
+                                </div>
+                                {/* Mobile Burger Menu Inline */}
                                 <button
-                                    key={idx}
-                                    disabled={day === null}
-                                    onClick={() => day && setSelectedDate(getDateString(day))}
-                                    className={cn(
-                                        "aspect-square rounded-lg flex flex-col items-center justify-center text-sm font-medium transition-all",
-                                        day === null && "invisible",
-                                        day && selectedDate === getDateString(day) && "bg-blue-600 text-white",
-                                        day && selectedDate !== getDateString(day) && "hover:bg-gray-100",
-                                    )}
+                                    onClick={() => setIsSidebarOpen(true)}
+                                    className="md:hidden p-2 bg-white border border-gray-100 shadow-sm rounded-xl text-gray-900 active:scale-95"
                                 >
-                                    {day}
-                                    {day && (
-                                        <div className={cn("w-2 h-2 rounded-full mt-1", hasContentOnDay(day) ? "bg-green-500" : "bg-red-400")} />
-                                    )}
+                                    <Search size={22} className="hidden" /> {/* Placeholder/Icon shift logic if needed */}
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                                 </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Results / Day Detail */}
-                    <div className="bg-white rounded-2xl shadow-lg p-6 max-h-[600px] overflow-y-auto">
-                        {debouncedSearchTerm ? (
-                            // SEARCH MODE
-                            <>
-                                <div className="flex items-center justify-between mb-6">
-                                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                        <Search size={18} />
-                                        Suchergebnisse
-                                        <span className="text-sm font-normal text-gray-500 ml-2">
-                                            ({displayMaterials.length} gefunden)
-                                        </span>
-                                    </h3>
-                                </div>
-                                {displayMaterials.length > 0 ? (
-                                    <div className="space-y-3">
-                                        {displayMaterials.map(m => (
-                                            <div key={m.id} className="group flex items-center gap-3 p-4 bg-gray-50 rounded-xl transition-all hover:bg-white hover:shadow-md border border-transparent hover:border-gray-100">
-                                                <button onClick={() => handlePreview(m)} className="flex items-center gap-3 flex-1 text-left">
-                                                    <FileText className="text-blue-500 flex-shrink-0" size={24} />
-                                                    <div className="overflow-hidden">
-                                                        <span className="block font-medium text-gray-800 truncate">{m.file_name}</span>
-                                                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                                                            <span className="bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-bold text-[10px]">
-                                                                {new Date(m.material_date).toLocaleDateString()}
-                                                            </span>
-                                                            <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold text-[10px]">
-                                                                {SUBJECTS.find(s => s.id === m.subject_id)?.name.substring(0, 3)}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                </button>
-                                                {isSmartboard && (
-                                                    <div className="flex items-center gap-1">
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); openEditModal(m); }}
-                                                            className="p-2 hover:bg-blue-100 rounded-lg text-gray-400 hover:text-blue-600"
-                                                        >
-                                                            <Edit3 size={18} />
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); deleteMaterial(m); }}
-                                                            className="p-2 hover:bg-red-100 rounded-lg text-gray-400 hover:text-red-600"
-                                                        >
-                                                            <Trash2 size={18} />
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-12 text-gray-400">
-                                        <Search size={48} className="mx-auto mb-4 opacity-50" />
-                                        <p>Keine Mitschriften gefunden für "{debouncedSearchTerm}"</p>
-                                    </div>
-                                )}
-                            </>
-                        ) : selectedDate ? (
-                            // CALENDAR MODE WITH DATE
-                            <>
-                                <div className="flex items-center justify-between mb-6">
-                                    <h3 className="text-lg font-bold text-gray-900">
-                                        <Calendar size={18} className="inline mr-2" />
-                                        {new Date(selectedDate + 'T00:00:00').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
-                                    </h3>
-                                    {isSmartboard && <p className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">Smartboard</p>}
-                                </div>
-
-                                {displayMaterials.length > 0 ? (
-                                    <div className="space-y-3">
-                                        {displayMaterials.map(m => (
-                                            <div key={m.id} className="group flex items-center gap-3 p-4 bg-gray-50 rounded-xl transition-all hover:bg-white hover:shadow-md border border-transparent hover:border-gray-100">
-                                                <button onClick={() => handlePreview(m)} className="flex items-center gap-3 flex-1 text-left">
-                                                    <div className="relative">
-                                                        <FileText className="text-blue-500 flex-shrink-0" size={24} />
-                                                        {m.lesson_hour && (
-                                                            <span className="absolute -top-2 -right-2 bg-blue-100 text-blue-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-blue-200">
-                                                                {m.lesson_hour}.
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div>
-                                                        <span className="block font-medium text-gray-800 truncate">{m.file_name}</span>
-                                                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                                                            {selectedSubject === 'all' && (
-                                                                <span className="bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold text-[10px]">
-                                                                    {SUBJECTS.find(s => s.id === m.subject_id)?.name.substring(0, 3)}
-                                                                </span>
-                                                            )}
-                                                            {m.lesson_hour && <span>{m.lesson_hour}. Std</span>}
-                                                            <span className="text-gray-300">•</span>
-                                                            <div className="flex items-center gap-1">
-                                                                <User size={10} />
-                                                                <span>{m.uploader?.full_name || 'Unbekannt'}</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </button>
-
-                                                {(isSmartboard || user?.id === m.uploader_id) && (
-                                                    <div className="flex items-center gap-1">
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); openEditModal(m); }}
-                                                            className="p-2 hover:bg-blue-100 rounded-lg text-gray-400 hover:text-blue-600"
-                                                        >
-                                                            <Edit3 size={18} />
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); deleteMaterial(m); }}
-                                                            className="p-2 hover:bg-red-100 rounded-lg text-gray-400 hover:text-red-600"
-                                                        >
-                                                            <Trash2 size={18} />
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-12 text-gray-400">
-                                        <FileText size={48} className="mx-auto mb-4 opacity-50" />
-                                        <p>Keine Dateien für diesen Tag</p>
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            // IDLE STATE
-                            <div className="text-center py-12 text-gray-400">
-                                <Calendar size={48} className="mx-auto mb-4 opacity-50" />
-                                <p>Wähle einen Tag im Kalender oder suche oben nach Mitschriften</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* Upload Modal */}
-            {showUploadModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in fade-in zoom-in duration-200">
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-xl font-bold">Datei hochladen</h3>
-                            <button onClick={() => setShowUploadModal(false)} className="p-2 hover:bg-gray-100 rounded-lg">
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Dateiname</label>
-                                <input
-                                    type="text"
-                                    value={uploadFileName}
-                                    onChange={(e) => setUploadFileName(e.target.value)}
-                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
-                                    placeholder="Name der Mitschrift"
-                                />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Jahrgang</label>
-                                    <select
-                                        value={uploadGrade}
-                                        onChange={(e) => setUploadGrade(e.target.value as '12' | '13')}
-                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
-                                    >
-                                        <option value="13">Jahrgang 13</option>
-                                        <option value="12">Jahrgang 12</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Fach</label>
-                                    <select
-                                        value={uploadSubject}
-                                        onChange={(e) => setUploadSubject(e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
-                                    >
-                                        {SUBJECTS.map(s => (
-                                            <option key={s.id} value={s.id}>{s.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Stunde</label>
-                                <select
-                                    value={uploadLessonHour}
-                                    onChange={(e) => setUploadLessonHour(Number(e.target.value))}
-                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
-                                >
-                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(h => (
-                                        <option key={h} value={h}>{h}. Stunde</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <p className="text-sm text-gray-500">
-                                Datum: <strong>{new Date().toLocaleDateString('de-DE')}</strong> (heute)
-                            </p>
-
-                            <button
-                                onClick={confirmUpload}
-                                disabled={uploading || !uploadFileName.trim()}
-                                className={cn(
-                                    "w-full py-4 rounded-xl font-bold text-white transition-all",
-                                    uploading || !uploadFileName.trim()
-                                        ? "bg-gray-300"
-                                        : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                                )}
-                            >
-                                {uploading ? 'Uploading...' : 'Hochladen'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Edit Modal */}
-            {editingMaterial && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
-                        <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-xl font-bold">Datei bearbeiten</h3>
-                            <button onClick={() => setEditingMaterial(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                                <input
-                                    type="text"
-                                    value={editName}
-                                    onChange={(e) => setEditName(e.target.value)}
-                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
-                                />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Datum</label>
+                            <div className="flex items-center gap-4 flex-1 lg:justify-end">
+                                {/* Search Bar */}
+                                <div className="relative w-full max-w-md">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                                     <input
-                                        type="date"
-                                        value={editDate}
-                                        onChange={(e) => setEditDate(e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                                        type="text"
+                                        placeholder="Mitschriften suchen..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-full pl-9 pr-4 py-2.5 bg-white rounded-xl text-sm border border-gray-200 focus:ring-2 focus:ring-blue-500 shadow-sm"
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Stunde</label>
-                                    <select
-                                        value={editLessonHour}
-                                        onChange={(e) => setEditLessonHour(Number(e.target.value))}
-                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
-                                    >
-                                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(h => (
-                                            <option key={h} value={h}>{h}. Stunde</option>
-                                        ))}
-                                    </select>
+
+                                {/* Upload Button */}
+                                <label className={cn(
+                                    "flex items-center gap-2 px-4 py-2.5 rounded-xl cursor-pointer transition-all shadow-md active:scale-95 flex-shrink-0",
+                                    uploading
+                                        ? "bg-gray-300 text-gray-500"
+                                        : "bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700"
+                                )}>
+                                    {uploading ? <Loader2 className="animate-spin w-5 h-5" /> : <Upload className="w-5 h-5" />}
+                                    <span className="font-bold hidden sm:inline">Hochladen</span>
+                                    <input
+                                        type="file"
+                                        accept="application/pdf,image/*"
+                                        className="hidden"
+                                        onChange={handleFileSelect}
+                                        disabled={uploading}
+                                    />
+                                </label>
+
+                            </div>
+                        </div>
+
+                        {/* Subject Tabs - Scrollable on mobile */}
+                        <div className="flex overflow-x-auto pb-2 -mx-2 px-2 md:mx-0 md:px-0 scrollbar-hide gap-2 no-scrollbar">
+                            <button
+                                onClick={() => { setSelectedSubject('all'); setSelectedDate(null); }}
+                                className={cn(
+                                    "px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap",
+                                    selectedSubject === 'all'
+                                        ? "bg-black text-white"
+                                        : "bg-white text-gray-600 border border-gray-200 hover:border-black"
+                                )}
+                            >
+                                Alle
+                            </button>
+
+                            <button
+                                onClick={() => { setSelectedGrade('13'); setSelectedDate(null); }}
+                                className={cn(
+                                    "px-4 py-2 rounded-xl text-sm font-bold transition-all border whitespace-nowrap flex items-center gap-1.5",
+                                    selectedGrade === '13'
+                                        ? "bg-purple-600 text-white border-purple-600 shadow-md"
+                                        : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+                                )}
+                            >
+                                Jg. 13
+                                <span className={cn("text-[10px] font-medium", selectedGrade === '13' ? "text-purple-100" : "text-gray-400")}>
+                                    ({formatGrade('13').split('(')[1]}
+                                </span>
+                            </button>
+                            <button
+                                onClick={() => { setSelectedGrade('12'); setSelectedDate(null); }}
+                                className={cn(
+                                    "px-4 py-2 rounded-xl text-sm font-bold transition-all border whitespace-nowrap flex items-center gap-1.5",
+                                    selectedGrade === '12'
+                                        ? "bg-purple-600 text-white border-purple-600 shadow-md"
+                                        : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
+                                )}
+                            >
+                                Jg. 12
+                                <span className={cn("text-[10px] font-medium", selectedGrade === '12' ? "text-purple-100" : "text-gray-400")}>
+                                    ({formatGrade('12').split('(')[1]}
+                                </span>
+                            </button>
+
+                            {SUBJECTS.map(s => (
+                                <button
+                                    key={s.id}
+                                    onClick={() => { setSelectedSubject(s.id); setSelectedDate(null); }}
+                                    className={cn(
+                                        "px-4 py-2 rounded-xl text-sm font-medium transition-all whitespace-nowrap",
+                                        selectedSubject === s.id
+                                            ? "bg-blue-600 text-white"
+                                            : "bg-white text-gray-600 border border-gray-200 hover:border-blue-300"
+                                    )}
+                                >
+                                    {s.name}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            {/* Calendar (Disabled visually or just dimmed when searching) */}
+                            <div className={cn("bg-white rounded-2xl shadow-lg p-6 transition-opacity", debouncedSearchTerm && "opacity-50 pointer-events-none")}>
+                                <div className="flex items-center justify-between mb-6">
+                                    <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))} className="p-2 hover:bg-gray-100 rounded-lg">
+                                        <ChevronLeft size={20} />
+                                    </button>
+                                    <h2 className="text-xl font-bold text-gray-900">
+                                        {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+                                    </h2>
+                                    <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))} className="p-2 hover:bg-gray-100 rounded-lg">
+                                        <ChevronRight size={20} />
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-7 gap-1 mb-2">
+                                    {weekDays.map(d => (
+                                        <div key={d} className="text-center text-xs font-bold text-gray-400 py-2">{d}</div>
+                                    ))}
+                                </div>
+
+                                <div className="grid grid-cols-7 gap-1">
+                                    {getDaysInMonth().map((day, idx) => (
+                                        <button
+                                            key={idx}
+                                            disabled={day === null}
+                                            onClick={() => day && setSelectedDate(getDateString(day))}
+                                            className={cn(
+                                                "aspect-square rounded-lg flex flex-col items-center justify-center text-sm font-medium transition-all",
+                                                day === null && "invisible",
+                                                day && selectedDate === getDateString(day) && "bg-blue-600 text-white",
+                                                day && selectedDate !== getDateString(day) && "hover:bg-gray-100",
+                                            )}
+                                        >
+                                            {day}
+                                            {day && (
+                                                <div className={cn("w-2 h-2 rounded-full mt-1", hasContentOnDay(day) ? "bg-green-500" : "bg-red-400")} />
+                                            )}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
 
-                            <button
-                                onClick={confirmEdit}
-                                className="w-full py-4 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all"
-                            >
-                                Speichern
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+                            {/* Results / Day Detail */}
+                            <div className="bg-white rounded-2xl shadow-lg p-6 max-h-[600px] overflow-y-auto">
+                                {debouncedSearchTerm ? (
+                                    // SEARCH MODE
+                                    <>
+                                        <div className="flex items-center justify-between mb-6">
+                                            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                                <Search size={18} />
+                                                Suchergebnisse
+                                                <span className="text-sm font-normal text-gray-500 ml-2">
+                                                    ({displayMaterials.length} gefunden)
+                                                </span>
+                                            </h3>
+                                        </div>
+                                        {displayMaterials.length > 0 ? (
+                                            <div className="space-y-3">
+                                                {displayMaterials.map((m: any) => {
+                                                    const isTeacher = !!m.teacher;
+                                                    return (
+                                                        <div key={m.id} className={cn(
+                                                            "group flex items-center gap-3 p-4 rounded-xl transition-all hover:shadow-md border border-transparent hover:border-gray-100",
+                                                            isTeacher ? "bg-amber-50 hover:bg-white" : "bg-gray-50 hover:bg-white"
+                                                        )}>
+                                                            <button onClick={() => handlePreview(m)} className="flex items-center gap-3 flex-1 text-left">
+                                                                {isTeacher ? <GraduationCap size={24} className="text-amber-600 flex-shrink-0" /> : <FileText className="text-blue-500 flex-shrink-0" size={24} />}
+                                                                <div className="overflow-hidden">
+                                                                    <span className="block font-medium text-gray-800 truncate">{m.file_name}</span>
+                                                                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                                                                        <span className="bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-bold text-[10px]">
+                                                                            {new Date(m.material_date).toLocaleDateString()}
+                                                                        </span>
+                                                                        <span className={cn(
+                                                                            "px-1.5 py-0.5 rounded uppercase font-bold text-[10px]",
+                                                                            isTeacher ? "bg-amber-100 text-amber-700" : "bg-blue-50 text-blue-600"
+                                                                        )}>
+                                                                            {SUBJECTS.find(s => s.id === m.subject_id)?.name.substring(0, 3)}
+                                                                        </span>
+                                                                        {isTeacher && <span className="text-amber-600 font-bold ml-1 flex items-center gap-1"><GraduationCap size={10} /> Schulinhalte</span>}
+                                                                    </div>
+                                                                </div>
+                                                            </button>
+                                                            {((!isTeacher && (isSmartboard || user?.id === (m as any).uploader_id)) || (isTeacher && user?.id === (m as any).teacher_id)) && (
+                                                                <div className="flex items-center gap-1">
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); openEditModal(m); }}
+                                                                        className="p-2 hover:bg-blue-100 rounded-lg text-gray-400 hover:text-blue-600"
+                                                                    >
+                                                                        <Edit3 size={18} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); deleteMaterial(m); }}
+                                                                        className="p-2 hover:bg-red-100 rounded-lg text-gray-400 hover:text-red-600"
+                                                                    >
+                                                                        <Trash2 size={18} />
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <div className="text-center py-12 text-gray-400">
+                                                <Search size={48} className="mx-auto mb-4 opacity-50" />
+                                                <p>Keine Mitschriften gefunden für "{debouncedSearchTerm}"</p>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : selectedDate ? (
+                                    // CALENDAR MODE WITH DATE
+                                    <>
+                                        <div className="flex items-center justify-between mb-6">
+                                            <h3 className="text-lg font-bold text-gray-900">
+                                                <Calendar size={18} className="inline mr-2" />
+                                                {new Date(selectedDate + 'T00:00:00').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
+                                            </h3>
+                                            {isSmartboard && <p className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">Smartboard</p>}
+                                        </div>
 
-            {/* Preview Modal */}
-            {previewUrl && previewFile && (
-                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewUrl(null)}>
-                    <div className="bg-white rounded-2xl w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-between p-4 border-b border-gray-100">
-                            <div>
-                                <h3 className="text-lg font-bold text-gray-900">{previewFile.file_name}</h3>
-                                <p className="text-sm text-gray-500">
-                                    {previewFile.lesson_hour ? `${previewFile.lesson_hour}. Stunde • ` : ''}
-                                    {new Date(previewFile.material_date).toLocaleDateString('de-DE')}
-                                </p>
+                                        {displayMaterials.length > 0 ? (
+                                            <div className="space-y-3">
+                                                {displayMaterials.map((m: any) => {
+                                                    const isTeacher = !!m.teacher;
+                                                    return (
+                                                        <div key={m.id} className={cn(
+                                                            "group flex items-center gap-3 p-4 rounded-xl transition-all hover:shadow-md border border-transparent hover:border-gray-100",
+                                                            isTeacher ? "bg-amber-50 hover:bg-white" : "bg-gray-50 hover:bg-white"
+                                                        )}>
+                                                            <button onClick={() => handlePreview(m)} className="flex items-center gap-3 flex-1 text-left">
+                                                                <div className="relative">
+                                                                    {isTeacher ? <GraduationCap size={24} className="text-amber-600 flex-shrink-0" /> : <FileText className="text-blue-500 flex-shrink-0" size={24} />}
+                                                                    {m.lesson_hour && (
+                                                                        <span className={cn(
+                                                                            "absolute -top-2 -right-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full border",
+                                                                            isTeacher ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-blue-100 text-blue-700 border-blue-200"
+                                                                        )}>
+                                                                            {m.lesson_hour}.
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <div>
+                                                                    <span className="block font-medium text-gray-800 truncate">{m.file_name}</span>
+                                                                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                                                                        {(selectedSubject === 'all' || isTeacher) && (
+                                                                            <span className={cn(
+                                                                                "px-1.5 py-0.5 rounded uppercase font-bold text-[10px]",
+                                                                                isTeacher ? "bg-amber-100 text-amber-700" : "bg-blue-50 text-blue-600"
+                                                                            )}>
+                                                                                {SUBJECTS.find(s => s.id === m.subject_id)?.name.substring(0, 3)}
+                                                                            </span>
+                                                                        )}
+                                                                        {m.lesson_hour && <span>{m.lesson_hour}. Std</span>}
+                                                                        <span className="text-gray-300">•</span>
+                                                                        <div className="flex items-center gap-1">
+                                                                            {isTeacher ? <GraduationCap size={10} className="text-amber-600" /> : <User size={10} />}
+                                                                            <span className={cn(isTeacher && "text-amber-700 font-bold")}>
+                                                                                {isTeacher ? (m.teacher?.full_name || 'Lehrer') : (m.uploader?.full_name || 'Unbekannt')}
+                                                                            </span>
+                                                                        </div>
+                                                                        {isTeacher && <span className="bg-amber-600 text-white px-1.5 py-0.5 rounded text-[9px] font-black uppercase">Schulinhalt</span>}
+                                                                    </div>
+                                                                </div>
+                                                            </button>
+
+                                                            {((!isTeacher && (isSmartboard || user?.id === (m as any).uploader_id)) || (isTeacher && user?.id === (m as any).teacher_id)) && (
+                                                                <div className="flex items-center gap-1">
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); openEditModal(m); }}
+                                                                        className="p-2 hover:bg-blue-100 rounded-lg text-gray-400 hover:text-blue-600"
+                                                                    >
+                                                                        <Edit3 size={18} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => { e.stopPropagation(); deleteMaterial(m); }}
+                                                                        className="p-2 hover:bg-red-100 rounded-lg text-gray-400 hover:text-red-600"
+                                                                    >
+                                                                        <Trash2 size={18} />
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <div className="text-center py-12 text-gray-400">
+                                                <FileText size={48} className="mx-auto mb-4 opacity-50" />
+                                                <p>Keine Dateien für diesen Tag</p>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    // IDLE STATE
+                                    <div className="text-center py-12 text-gray-400">
+                                        <Calendar size={48} className="mx-auto mb-4 opacity-50" />
+                                        <p>Wähle einen Tag im Kalender oder suche oben nach Mitschriften</p>
+                                    </div>
+                                )}
                             </div>
-                            <div className="flex items-center gap-2">
-                                <a
-                                    href={previewUrl}
-                                    download={previewFile.file_name}
-                                    className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
-                                    title="Download"
-                                >
-                                    <Download size={20} />
-                                </a>
-                                <button onClick={() => setPreviewUrl(null)} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors">
-                                    <X size={20} />
-                                </button>
-                            </div>
-                        </div>
-                        <div className="flex-1 bg-gray-100 overflow-hidden relative">
-                            <PDFViewer url={previewUrl} />
                         </div>
                     </div>
-                </div>
-            )}
-            {/* Sidebar Component */}
-            <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
-        </main>
+
+                    {/* Upload Modal */}
+                    {showUploadModal && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in fade-in zoom-in duration-200">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-xl font-bold">Datei hochladen</h3>
+                                    <button onClick={() => setShowUploadModal(false)} className="p-2 hover:bg-gray-100 rounded-lg">
+                                        <X size={20} />
+                                    </button>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Dateiname</label>
+                                        <input
+                                            type="text"
+                                            value={uploadFileName}
+                                            onChange={(e) => setUploadFileName(e.target.value)}
+                                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
+                                            placeholder="Name der Mitschrift"
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Jahrgang</label>
+                                            <select
+                                                value={uploadGrade}
+                                                onChange={(e) => setUploadGrade(e.target.value as '12' | '13')}
+                                                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
+                                            >
+                                                <option value="13">Jahrgang 13</option>
+                                                <option value="12">Jahrgang 12</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Fach</label>
+                                            <select
+                                                value={uploadSubject}
+                                                onChange={(e) => setUploadSubject(e.target.value)}
+                                                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
+                                            >
+                                                {SUBJECTS.map(s => (
+                                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Stunde</label>
+                                        <select
+                                            value={uploadLessonHour}
+                                            onChange={(e) => setUploadLessonHour(Number(e.target.value))}
+                                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500"
+                                        >
+                                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(h => (
+                                                <option key={h} value={h}>{h}. Stunde</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <p className="text-sm text-gray-500">
+                                        Datum: <strong>{new Date().toLocaleDateString('de-DE')}</strong> (heute)
+                                    </p>
+
+                                    <button
+                                        onClick={confirmUpload}
+                                        disabled={uploading || !uploadFileName.trim()}
+                                        className={cn(
+                                            "w-full py-4 rounded-xl font-bold text-white transition-all",
+                                            uploading || !uploadFileName.trim()
+                                                ? "bg-gray-300"
+                                                : "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                                        )}
+                                    >
+                                        {uploading ? 'Uploading...' : 'Hochladen'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Edit Modal */}
+                    {editingMaterial && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                            <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="text-xl font-bold">Datei bearbeiten</h3>
+                                    <button onClick={() => setEditingMaterial(null)} className="p-2 hover:bg-gray-100 rounded-lg">
+                                        <X size={20} />
+                                    </button>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                                        <input
+                                            type="text"
+                                            value={editName}
+                                            onChange={(e) => setEditName(e.target.value)}
+                                            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Datum</label>
+                                            <input
+                                                type="date"
+                                                value={editDate}
+                                                onChange={(e) => setEditDate(e.target.value)}
+                                                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Stunde</label>
+                                            <select
+                                                value={editLessonHour}
+                                                onChange={(e) => setEditLessonHour(Number(e.target.value))}
+                                                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                                            >
+                                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(h => (
+                                                    <option key={h} value={h}>{h}. Stunde</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={confirmEdit}
+                                        className="w-full py-4 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all"
+                                    >
+                                        Speichern
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Preview Modal */}
+                    {previewUrl && previewFile && (
+                        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setPreviewUrl(null)}>
+                            <div className="bg-white rounded-2xl w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-gray-900">{previewFile.file_name}</h3>
+                                        <p className="text-sm text-gray-500">
+                                            {previewFile.lesson_hour ? `${previewFile.lesson_hour}. Stunde • ` : ''}
+                                            {new Date(previewFile.material_date).toLocaleDateString('de-DE')}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <a
+                                            href={previewUrl}
+                                            download={previewFile.file_name}
+                                            className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
+                                            title="Download"
+                                        >
+                                            <Download size={20} />
+                                        </a>
+                                        <button onClick={() => setPreviewUrl(null)} className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors">
+                                            <X size={20} />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex-1 bg-gray-100 overflow-hidden relative">
+                                    <PDFViewer url={previewUrl} />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </main>
+            </div>
+        </div>
     );
 }
 
