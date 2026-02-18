@@ -80,11 +80,11 @@ export function Sidebar({ isOpen, onClose, onChatOpen }: SidebarProps) {
     const sidebarContent = (
         <div className="flex flex-col h-full bg-white">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between pt-[calc(6rem+var(--safe-area-inset-top,0px))] md:pt-6">
-                <div className="flex items-center gap-3">
-                    <img src="/logo.png" alt="Abitur Cloud Logo" className="w-10 h-10 object-contain" />
-                    <div>
-                        <h1 className="text-xl font-bold text-gray-900 leading-none">Abitur Cloud</h1>
-                        <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-widest font-black">Lernplattform</p>
+                <div className="flex items-center gap-2 min-w-0">
+                    <img src="/logo.png" alt="Abitur Cloud Logo" className="w-7 h-7 object-contain flex-shrink-0" />
+                    <div className="min-w-0">
+                        <h1 className="text-lg font-bold text-gray-900 leading-none truncate">Abitur Cloud</h1>
+                        <p className="text-[9px] text-gray-400 mt-0.5 uppercase tracking-widest font-black">Lernplattform</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
