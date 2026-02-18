@@ -4,8 +4,10 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
+import { MobileTabBar } from '@/components/dashboard/MobileTabBar';
 
 const publicRoutes = ['/login', '/signup', '/auth/reset-password', '/auth/pending'];
+const noTabBarRoutes = ['/admin', '/teacher', '/login', '/signup', '/auth'];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
     const { user, profile, loading } = useAuth(); // Destructure profile
@@ -13,6 +15,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     // Normalize pathname to remove trailing slash for consistent matching
     const normalizedPath = pathname.endsWith('/') && pathname.length > 1 ? pathname.slice(0, -1) : pathname;
+
+    const showTabBar = user && !noTabBarRoutes.some(r => normalizedPath.startsWith(r));
 
     useEffect(() => {
         if (!loading) {
@@ -60,5 +64,13 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         );
     }
 
-    return <>{children}</>;
+    return (
+        <>
+            <div className={showTabBar ? 'pb-20 md:pb-0' : ''}>
+                {children}
+            </div>
+            {showTabBar && <MobileTabBar />}
+        </>
+    );
 }
+

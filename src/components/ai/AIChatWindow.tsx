@@ -112,7 +112,8 @@ export default function AIChatWindow({ isOpen, onClose, context, initialMessage,
                 return data.content;
             }
         } catch (error: any) {
-            throw error;
+            console.error('[AIChatWindow] AI error:', error);
+            throw new Error('Die KI-Lernhilfe ist gerade noch nicht verfügbar. Wir arbeiten daran! 🚧');
         }
     };
 

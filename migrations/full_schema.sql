@@ -503,7 +503,51 @@ END $$;
 
 
 -- ============================================================================
--- 13. STORAGE BUCKETS
+-- 13. FRIENDSHIPS (Freundschaftssystem)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.friendships (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  friend_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'accepted', 'rejected'
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_id, friend_id)
+);
+
+ALTER TABLE public.friendships ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can read own friendships" ON public.friendships
+    FOR SELECT TO authenticated
+    USING (user_id = auth.uid() OR friend_id = auth.uid());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can create friendship requests" ON public.friendships
+    FOR INSERT TO authenticated
+    WITH CHECK (user_id = auth.uid());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can update friendships they are part of" ON public.friendships
+    FOR UPDATE TO authenticated
+    USING (user_id = auth.uid() OR friend_id = auth.uid());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE POLICY "Users can delete own friendships" ON public.friendships
+    FOR DELETE TO authenticated
+    USING (user_id = auth.uid() OR friend_id = auth.uid());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+
+-- ============================================================================
+-- 14. STORAGE BUCKETS
 -- ============================================================================
 
 INSERT INTO storage.buckets (id, name, public) VALUES ('notes', 'notes', true) ON CONFLICT (id) DO NOTHING;
