@@ -1,6 +1,5 @@
 import UIKit
 import Capacitor
-import OneSignalFramework
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -8,11 +7,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // OneSignal Native Initialization
-        OneSignal.initialize("78604014-b8b1-4f95-8020-0d00fa250dbc", withLaunchOptions: launchOptions)
-        OneSignal.Notifications.requestPermission({ accepted in
-            print("[OneSignal] Permission accepted: \(accepted)")
-        }, fallbackToSettings: true)
+        // Push notifications can be added later via Capacitor plugin
         return true
     }
 

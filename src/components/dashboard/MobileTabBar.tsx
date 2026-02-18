@@ -49,10 +49,10 @@ export function MobileTabBar() {
 
                 {/* Aufgaben Tab with badge */}
                 {(() => {
-                    const isActive = pathname === '/teacher/tasks' || pathname?.startsWith('/teacher/tasks/');
+                    const isActive = pathname === '/tasks' || pathname?.startsWith('/tasks/');
                     return (
                         <Link
-                            href="/teacher/tasks"
+                            href="/tasks"
                             className={cn(
                                 "flex flex-col items-center justify-center flex-1 gap-0.5 transition-colors relative",
                                 isActive
