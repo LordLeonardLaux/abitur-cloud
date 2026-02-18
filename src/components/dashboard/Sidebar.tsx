@@ -135,6 +135,11 @@ export function Sidebar({ isOpen, onClose, onChatOpen }: SidebarProps) {
                         KI-Lernhilfe
                     </button>
                 )}
+
+                <button onClick={() => signOut()} className="flex items-center gap-3 w-full p-3 mt-2 text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all font-medium text-sm">
+                    <LogOut size={18} />
+                    <span>Abmelden</span>
+                </button>
             </div>
 
             <div className="p-4 border-b border-gray-100">
@@ -260,14 +265,6 @@ export function Sidebar({ isOpen, onClose, onChatOpen }: SidebarProps) {
                         })}
                     </div>
                 )}
-
-                {/* Sign Out - inside scroll area so it's always reachable */}
-                <div className="mt-6 pt-4 pb-32 md:pb-4 border-t border-gray-100">
-                    <button onClick={() => signOut()} className="flex items-center gap-3 w-full p-3 text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all font-medium text-sm">
-                        <LogOut size={18} />
-                        <span>Abmelden</span>
-                    </button>
-                </div>
             </div>
         </div>
     );
