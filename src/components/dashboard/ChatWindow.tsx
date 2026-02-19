@@ -166,7 +166,7 @@ export function ChatWindow({ friend, currentUser, onClose, isInline = false }: C
             {/* Header */}
             <div className={cn(
                 "p-4 border-b border-gray-100 flex items-center justify-between bg-white",
-                !isInline && "rounded-t-2xl pt-[calc(1rem+var(--safe-area-inset-top))]"
+                isInline ? "pt-[calc(1rem+env(safe-area-inset-top,0px))] md:pt-4" : "rounded-t-2xl pt-[calc(1rem+var(--safe-area-inset-top))]"
             )}>
 
                 <div className="flex items-center gap-3">
@@ -241,7 +241,7 @@ export function ChatWindow({ friend, currentUser, onClose, isInline = false }: C
             {/* Input Area */}
             <div className={cn(
                 "p-4 border-t border-gray-100 bg-white",
-                !isInline && "pb-[calc(1rem+var(--safe-area-inset-bottom))]"
+                isInline ? "pb-[calc(1rem+5rem+env(safe-area-inset-bottom,0px))] md:pb-4" : "pb-[calc(1rem+var(--safe-area-inset-bottom))]"
             )}>
 
                 <form onSubmit={handleSendMessage} className="flex gap-2">

@@ -196,7 +196,7 @@ export function Sidebar({ isOpen, onClose, onChatOpen }: SidebarProps) {
                                             <p className="text-sm font-bold text-gray-900 truncate">{sug.full_name}</p>
                                         </div>
                                         {isSent ? (
-                                            <span className="p-1.5 bg-green-100 text-green-600 rounded-lg text-xs font-bold">
+                                            <span className="p-1.5 bg-orange-100 text-orange-600 rounded-lg text-xs font-bold">
                                                 <Check size={14} />
                                             </span>
                                         ) : (
