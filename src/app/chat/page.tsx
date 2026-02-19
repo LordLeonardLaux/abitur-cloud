@@ -64,24 +64,32 @@ export default function ChatPage() {
                                     </div>
                                 ) : (
                                     <div className="divide-y divide-gray-50">
-                                        {friends.map((friend) => (
-                                            <button
-                                                key={friend.id}
-                                                onClick={() => setSelectedFriend(friend)}
-                                                className="w-full flex items-center gap-3 px-5 py-4 hover:bg-gray-50 active:bg-gray-100 transition-colors text-left"
-                                            >
-                                                <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                                                    {friend.full_name?.charAt(0)}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-[15px] font-semibold text-gray-900 truncate">{friend.full_name}</p>
-                                                    <p className="text-xs text-gray-400 mt-0.5">
-                                                        {friend.username ? `@${friend.username}` : 'Tippe um zu chatten'}
-                                                    </p>
-                                                </div>
-                                                <MessageSquare size={18} className="text-gray-300 flex-shrink-0" />
-                                            </button>
-                                        ))}
+                                        {friends.map((friend) => {
+                                            const isTeacher = (friend as any).role === 'teacher';
+                                            return (
+                                                <button
+                                                    key={friend.id}
+                                                    onClick={() => setSelectedFriend(friend)}
+                                                    className="w-full flex items-center gap-3 px-5 py-4 hover:bg-gray-50 active:bg-gray-100 transition-colors text-left"
+                                                >
+                                                    <div className={cn(
+                                                        "w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0",
+                                                        isTeacher
+                                                            ? "bg-gradient-to-br from-amber-400 to-amber-600 ring-2 ring-amber-400 ring-offset-2"
+                                                            : "bg-blue-500"
+                                                    )}>
+                                                        {friend.full_name?.charAt(0)}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-[15px] font-semibold text-gray-900 truncate">{friend.full_name}</p>
+                                                        {isTeacher && (
+                                                            <p className="text-[11px] font-medium text-amber-500 mt-0.5">Lehrer</p>
+                                                        )}
+                                                    </div>
+                                                    <MessageSquare size={18} className="text-gray-300 flex-shrink-0" />
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>

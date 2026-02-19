@@ -79,11 +79,11 @@ export default function DashboardPage() {
     const hasSubjects = Object.keys(userSubjects).length > 0;
 
     return (
-        <div className="flex min-h-screen bg-white">
+        <div className="flex h-screen bg-white overflow-hidden">
             <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
-            <div className="flex-1 flex flex-col min-w-0">
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                 {/* Main Content */}
-                <main className="flex-1 p-4 md:p-8">
+                <main className="flex-1 p-4 md:p-8 overflow-hidden pb-24 md:pb-8">
                     <div className="max-w-5xl mx-auto">
                         {profile && <GradeMigrationModal user={profile} onUpdate={() => window.location.reload()} />}
 
