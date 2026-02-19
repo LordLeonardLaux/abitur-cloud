@@ -69,9 +69,13 @@ export function useFriends(): UseFriendsReturn {
             const friendsData = await friendService.getFriendsWithSubjects(user.id);
             setFriends(friendsData);
 
-            // Fetch pending requests
+            // Fetch pending requests (sent TO us)
             const requestsData = await friendService.getPendingRequestsWithProfiles(user.id);
             setPendingRequests(requestsData);
+
+            // Fetch our sent pending requests (sent BY us)
+            const sentData = await friendService.getSentPendingRequests(user.id);
+            setSentRequests(sentData);
 
             // Fetch suggestions
             const friendIds = friendsData.map(f => f.id);

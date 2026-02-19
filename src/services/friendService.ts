@@ -102,6 +102,13 @@ export async function searchUsers(
     return profileRepo.searchProfiles(query, currentUserId);
 }
 
+/**
+ * Gets IDs of users the current user has already sent friend requests to.
+ */
+export async function getSentPendingRequests(userId: string): Promise<string[]> {
+    return friendshipRepo.getSentPendingRequests(userId);
+}
+
 // ============================================================================
 // ACTIONS
 // ============================================================================
@@ -113,7 +120,7 @@ export async function searchUsers(
 export async function sendOrAcceptFriendRequest(
     userId: string,
     friendId: string
-): Promise<{ success: boolean; action: 'sent' | 'accepted' | 'exists' }> {
+): Promise<{ success: boolean; action: 'sent' | 'accepted' | 'already_sent' | 'already_friends' }> {
     // Check for existing friendship
     const existing = await friendshipRepo.checkExistingFriendship(userId, friendId);
 
@@ -123,8 +130,11 @@ export async function sendOrAcceptFriendRequest(
             await friendshipRepo.updateFriendshipStatus(existing.id, 'accepted');
             return { success: true, action: 'accepted' };
         }
-        // Already friends or we already sent a request
-        return { success: false, action: 'exists' };
+        if (existing.status === 'accepted') {
+            return { success: true, action: 'already_friends' };
+        }
+        // We already sent a pending request - treat as success for UI
+        return { success: true, action: 'already_sent' };
     }
 
     // Create new request

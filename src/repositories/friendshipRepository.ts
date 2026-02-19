@@ -95,6 +95,23 @@ export async function checkExistingFriendship(
     return data?.[0] || null;
 }
 
+/**
+ * Fetches IDs of users the current user has sent pending requests to.
+ */
+export async function getSentPendingRequests(userId: string): Promise<string[]> {
+    const { data, error } = await supabase
+        .from('friendships')
+        .select('friend_id')
+        .eq('user_id', userId)
+        .eq('status', 'pending');
+
+    if (error) {
+        console.error('[friendshipRepo] getSentPendingRequests error:', error);
+        return [];
+    }
+    return (data || []).map(r => r.friend_id);
+}
+
 // ============================================================================
 // MUTATIONS
 // ============================================================================
