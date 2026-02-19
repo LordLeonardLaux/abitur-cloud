@@ -159,9 +159,13 @@ export function ChatWindow({ friend, currentUser, onClose, isInline = false }: C
                 "bg-white flex flex-col transition-all duration-300 ease-out",
                 isInline
                     ? "h-full w-full"
-                    : "fixed bottom-0 right-0 md:right-80 w-full md:w-96 shadow-2xl rounded-t-2xl border border-gray-100 z-50 h-[500px] max-h-[90vh]"
+                    : "fixed inset-4 md:inset-[10%] md:inset-y-[5%] shadow-2xl rounded-2xl border border-gray-200 z-[70] max-h-[90vh]"
             )}
         >
+            {/* Backdrop for popup mode */}
+            {!isInline && (
+                <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[-1]" onClick={onClose} />
+            )}
 
             {/* Header */}
             <div className={cn(
@@ -192,50 +196,52 @@ export function ChatWindow({ friend, currentUser, onClose, isInline = false }: C
             </div>
 
             {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
-                {error && (
-                    <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs flex flex-col items-center text-center gap-2">
-                        <p className="font-bold">Chat-Fehler</p>
-                        <p>{error}</p>
-                    </div>
-                )}
-                {loading ? (
-                    <div className="flex justify-center items-center h-full">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
-                    </div>
-                ) : messages.length === 0 && !error ? (
-                    <div className="text-center mt-10">
-                        <MessageSquare className="w-10 h-10 text-gray-200 mx-auto mb-2" />
-                        <p className="text-sm text-gray-400">Sag mal Hallo!</p>
-                    </div>
-                ) : (
-                    messages.map((msg, i) => (
-                        <div
-                            key={msg.id || i}
-                            className={cn(
-                                "flex flex-col max-w-[80%]",
-                                msg.sender_id === currentUser.id ? "ml-auto items-end" : "items-start"
-                            )}
-                        >
+            <div className="flex-1 overflow-y-auto p-4 bg-gray-50/50 min-h-0">
+                <div className="flex flex-col justify-end min-h-full space-y-4">
+                    {error && (
+                        <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs flex flex-col items-center text-center gap-2">
+                            <p className="font-bold">Chat-Fehler</p>
+                            <p>{error}</p>
+                        </div>
+                    )}
+                    {loading ? (
+                        <div className="flex justify-center items-center h-full">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                        </div>
+                    ) : messages.length === 0 && !error ? (
+                        <div className="text-center mt-10">
+                            <MessageSquare className="w-10 h-10 text-gray-200 mx-auto mb-2" />
+                            <p className="text-sm text-gray-400">Sag mal Hallo!</p>
+                        </div>
+                    ) : (
+                        messages.map((msg, i) => (
                             <div
+                                key={msg.id || i}
                                 className={cn(
-                                    "p-3 rounded-2xl text-sm shadow-sm overflow-hidden",
-                                    msg.sender_id === currentUser.id
-                                        ? "bg-blue-600 text-white rounded-tr-none"
-                                        : "bg-white text-gray-800 border border-gray-100 rounded-tl-none"
+                                    "flex flex-col max-w-[80%]",
+                                    msg.sender_id === currentUser.id ? "ml-auto items-end" : "items-start"
                                 )}
                             >
-                                <p className="whitespace-pre-wrap break-words overflow-x-auto max-w-full">
-                                    {msg.content}
-                                </p>
+                                <div
+                                    className={cn(
+                                        "p-3 rounded-2xl text-sm shadow-sm overflow-hidden",
+                                        msg.sender_id === currentUser.id
+                                            ? "bg-blue-600 text-white rounded-tr-none"
+                                            : "bg-white text-gray-800 border border-gray-100 rounded-tl-none"
+                                    )}
+                                >
+                                    <p className="whitespace-pre-wrap break-words overflow-x-auto max-w-full">
+                                        {msg.content}
+                                    </p>
+                                </div>
+                                <span className="text-[10px] text-gray-400 mt-1 px-1">
+                                    {format(new Date(msg.created_at || Date.now()), 'HH:mm', { locale: de })}
+                                </span>
                             </div>
-                            <span className="text-[10px] text-gray-400 mt-1 px-1">
-                                {format(new Date(msg.created_at || Date.now()), 'HH:mm', { locale: de })}
-                            </span>
-                        </div>
-                    ))
-                )}
-                <div ref={messagesEndRef} />
+                        ))
+                    )}
+                    <div ref={messagesEndRef} />
+                </div>
             </div>
 
             {/* Input Area */}
