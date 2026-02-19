@@ -6,8 +6,13 @@
 import { getApiUrl } from '@/lib/platform';
 import { supabase } from '@/lib/supabase/client';
 
-export async function sendNotification(userIds: string[], heading: string, content: string, data?: any) {
-    console.log('[Notification] Requesting API send:', { heading });
+export async function sendNotification(
+    targeting: { userIds?: string[], segments?: string[], subjectId?: string, courseType?: string, gradeLevel?: string },
+    heading: string,
+    content: string,
+    data?: any
+) {
+    console.log('[Notification] Requesting API send:', { heading, targeting });
 
     try {
         // We need the current session for the API route to verify us
@@ -27,7 +32,7 @@ export async function sendNotification(userIds: string[], heading: string, conte
                 ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {})
             },
             body: JSON.stringify({
-                userIds,
+                targeting,
                 heading,
                 content,
                 data

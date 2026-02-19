@@ -63,13 +63,15 @@ export function CreateTaskModal({ isOpen, onClose, onSuccess }: CreateTaskModalP
             setDueDate('');
 
             // Notify Students
-            // We target a segment based on grade level (e.g. "grade-12") or all students if none specified
-            // Note: This requires OneSignal Segments to be set up appropriately
+            // We target based on subject_id and filters (courseType, gradeLevel)
             const subjectName = SUBJECTS.find(s => s.id === subjectId)?.name || 'Einem Fach';
-            const targetSegment = gradeLevel ? `grade-${gradeLevel}` : 'all-students';
 
             sendNotification(
-                [targetSegment],
+                {
+                    subjectId,
+                    courseType: courseType || undefined,
+                    gradeLevel: gradeLevel || undefined
+                },
                 `Neue Aufgabe in ${subjectName}`,
                 `${title} (bis ${dueDate ? new Date(dueDate).toLocaleDateString('de-DE') : 'demnächst'})`
             );

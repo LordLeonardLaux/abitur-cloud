@@ -71,7 +71,7 @@ export default function Signup() {
             // 3. Notify Admins (Placeholder for real admin ID logic)
             // Ideally we fetch admin IDs or send to a segment/topic "Admins"
             sendNotification(
-                ['admin-segment'], // Placeholder for admin segment/tag
+                { segments: ['Admins'] }, // Placeholder for admin segment/tag
                 'Neue Registrierung',
                 `${fullName} (${username}) bittet um Zugang.`
             );

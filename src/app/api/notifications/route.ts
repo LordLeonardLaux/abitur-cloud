@@ -22,11 +22,60 @@ export async function POST(request: Request) {
         // We'll trust the auth for now as a basic guard.
 
         const body = await request.json();
-        const { userIds, heading, content, data } = body;
+        const { targeting, heading, content, data } = body;
 
         const ONESIGNAL_APP_ID = '78604014-b8b1-4f95-8020-0d00fa250dbc';
         // USE THE KEY HERE SAFELY ON SERVER
         const ONESIGNAL_API_KEY = 'os_v2_app_pbqeaffywfhzlababuapujinxq7pnd3ristey3vbb6ovftknzfmppr6gznmvomkoaanwk2sc2gjo2khpqb3u7oome2gut3k2ygxtu5y';
+
+        // Construct OneSignal Payload
+        const payload: any = {
+            app_id: ONESIGNAL_APP_ID,
+            channel_for_external_user_ids: "push",
+            headings: { en: heading, de: heading },
+            contents: { en: content, de: content },
+            data: data,
+            ios_sound: "default",
+            priority: 10
+        };
+
+        // Targeting Logic
+        if (targeting?.userIds?.length > 0) {
+            // Target specific users
+            payload.include_external_user_ids = targeting.userIds;
+        }
+        else if (targeting?.segments?.length > 0) {
+            // Target segments (e.g. "Admins", "All")
+            payload.included_segments = targeting.segments;
+        }
+        else if (targeting?.subjectId) {
+            // Target by Tags (Subject & Level)
+            const filters = [];
+
+            // Filter 1: Subject
+            // If courseType is set (e.g. "LK"), target that value.
+            // If not set (or "m"/"a"), target existence (any student with this subject) - OR specific values?
+            // NotificationProvider tags: "LK", "GK" or "true".
+            // If CreateTask sends "LK", we want tag value "LK".
+            if (targeting.courseType && ['LK', 'GK'].includes(targeting.courseType)) {
+                filters.push({ field: "tag", key: `subject_${targeting.subjectId}`, relation: "=", value: targeting.courseType });
+            } else {
+                // Target anyone having this subject tag (exists)
+                filters.push({ field: "tag", key: `subject_${targeting.subjectId}`, relation: "exists" });
+            }
+
+            // Filter 2: Grade Level (AND)
+            if (targeting.gradeLevel) {
+                filters.push({ field: "tag", key: "grade", relation: "=", value: targeting.gradeLevel });
+            }
+
+            payload.filters = filters;
+        }
+        else {
+            // Default Fallback: Broadcast to All (Safety)
+            // Or maybe restrict? For now, 'All' ensures delivery if logic fails.
+            payload.included_segments = ["All"];
+        }
 
         const response = await fetch('https://onesignal.com/api/v1/notifications', {
             method: 'POST',
@@ -34,19 +83,7 @@ export async function POST(request: Request) {
                 'Content-Type': 'application/json',
                 'Authorization': `Basic ${ONESIGNAL_API_KEY}`
             },
-            body: JSON.stringify({
-                app_id: ONESIGNAL_APP_ID,
-                // BROADCAST to All for now (as native bridge is missing)
-                included_segments: ["All"],
-                // include_external_user_ids: userIds,
-
-                channel_for_external_user_ids: "push",
-                headings: { en: heading, de: heading },
-                contents: { en: content, de: content },
-                data: data,
-                ios_sound: "default",
-                priority: 10
-            })
+            body: JSON.stringify(payload)
         });
 
         if (!response.ok) {
