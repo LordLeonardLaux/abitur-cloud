@@ -39,43 +39,37 @@ export async function POST(request: Request) {
             priority: 10
         };
 
-        // Targeting Logic
+        // Targeting Logic - TEMPORARILY DISABLED due to Plugin issues
+        // We revert to Broadcast for now.
+        /*
         if (targeting?.userIds?.length > 0) {
             // Target specific users
             payload.include_external_user_ids = targeting.userIds;
-        }
+        } 
         else if (targeting?.segments?.length > 0) {
             // Target segments (e.g. "Admins", "All")
             payload.included_segments = targeting.segments;
-        }
+        } 
         else if (targeting?.subjectId) {
             // Target by Tags (Subject & Level)
             const filters = [];
-
-            // Filter 1: Subject
-            // If courseType is set (e.g. "LK"), target that value.
-            // If not set (or "m"/"a"), target existence (any student with this subject) - OR specific values?
-            // NotificationProvider tags: "LK", "GK" or "true".
-            // If CreateTask sends "LK", we want tag value "LK".
             if (targeting.courseType && ['LK', 'GK'].includes(targeting.courseType)) {
                 filters.push({ field: "tag", key: `subject_${targeting.subjectId}`, relation: "=", value: targeting.courseType });
             } else {
-                // Target anyone having this subject tag (exists)
-                filters.push({ field: "tag", key: `subject_${targeting.subjectId}`, relation: "exists" });
+                 filters.push({ field: "tag", key: `subject_${targeting.subjectId}`, relation: "exists" });
             }
-
-            // Filter 2: Grade Level (AND)
             if (targeting.gradeLevel) {
                 filters.push({ field: "tag", key: "grade", relation: "=", value: targeting.gradeLevel });
             }
-
             payload.filters = filters;
         }
         else {
-            // Default Fallback: Broadcast to All (Safety)
-            // Or maybe restrict? For now, 'All' ensures delivery if logic fails.
-            payload.included_segments = ["All"];
+             payload.included_segments = ["All"];
         }
+        */
+
+        // FORCE BROADCAST
+        payload.included_segments = ["All"];
 
         const response = await fetch('https://onesignal.com/api/v1/notifications', {
             method: 'POST',

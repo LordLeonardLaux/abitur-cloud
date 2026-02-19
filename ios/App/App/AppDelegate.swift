@@ -9,10 +9,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // OneSignal Push Notification Setup
-        // OneSignal.initialize("78604014-b8b1-4f95-8020-0d00fa250dbc", withLaunchOptions: launchOptions)
-        // OneSignal.Notifications.requestPermission({ accepted in
-        //    print("[OneSignal] Permission accepted: \(accepted)")
-        // }, fallbackToSettings: true)
+        OneSignal.initialize("78604014-b8b1-4f95-8020-0d00fa250dbc", withLaunchOptions: launchOptions)
+        OneSignal.Notifications.requestPermission({ accepted in
+            print("[OneSignal] Permission accepted: \(accepted)")
+        }, fallbackToSettings: true)
         return true
     }
 
