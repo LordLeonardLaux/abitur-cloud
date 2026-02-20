@@ -1,5 +1,3 @@
-'use server';
-
 // This function runs on the client (or server) and calls our OWN API route
 // ensuring the OneSignal Key stays properly secured on the Server.
 
