@@ -14,9 +14,16 @@ import { Sidebar } from '@/components/dashboard/Sidebar';
 function FriendSemesterAccordion({ semester, subjectId, colorClass, friendId }: { semester: string, subjectId: string, colorClass: string, friendId: string }) {
     const [isOpen, setIsOpen] = useState(false);
     const [topics, setTopics] = useState<Topic[]>([]);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        supabase.from('topics').select('*').eq('owner_id', friendId).eq('subject_id', subjectId).eq('semester', semester).order('index').then(({ data }) => setTopics(data || []));
+        import('@/repositories/baseRepository').then(({ supabaseFetch }) => {
+            supabaseFetch<Topic[]>(`topics?owner_id=eq.${friendId}&subject_id=eq.${subjectId}&semester=eq.${semester}&order=index`)
+                .then(data => {
+                    setTopics(data || []);
+                    setLoading(false);
+                });
+        });
     }, [friendId, subjectId, semester]);
 
     return (
@@ -32,7 +39,9 @@ function FriendSemesterAccordion({ semester, subjectId, colorClass, friendId }: 
                 {isOpen && (
                     <motion.div initial="collapsed" animate="open" exit="collapsed" variants={{ open: { opacity: 1, height: "auto" }, collapsed: { opacity: 0, height: 0 } }} transition={{ duration: 0.3, ease: "easeInOut" }}>
                         <div className="px-4 pb-6 pt-2 bg-gray-50 space-y-2">
-                            {topics.length === 0 ? (
+                            {loading ? (
+                                <div className="p-8 text-center text-gray-400 text-sm font-medium">Lade Themen...</div>
+                            ) : topics.length === 0 ? (
                                 <div className="p-8 text-center text-gray-400 text-sm font-medium">Keine Themen vorhanden.</div>
                             ) : (
                                 topics.map(t => (
@@ -61,7 +70,13 @@ function ProfileSubjectContent() {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     useEffect(() => {
-        if (userId) supabase.from('profiles').select('*').eq('id', userId).single().then(({ data }) => setProfile(data));
+        if (userId) {
+            import('@/repositories/baseRepository').then(({ supabaseFetch }) => {
+                supabaseFetch<Profile[]>(`profiles?id=eq.${userId}`).then(data => {
+                    if (data && data.length > 0) setProfile(data[0]);
+                });
+            });
+        }
     }, [userId]);
 
     const subject = SUBJECTS.find(s => s.id === id);

@@ -29,14 +29,18 @@ export default function LoginPage() {
             // Look up email by username using raw fetch
             console.log("Looking up email for username:", identifier);
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000);
                 const res = await fetch(
                     `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/profiles?username=eq.${identifier}&select=email`,
                     {
                         headers: {
                             'apikey': process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-                        }
+                        },
+                        signal: controller.signal,
                     }
                 );
+                clearTimeout(timeoutId);
                 if (res.ok) {
                     const data = await res.json();
                     if (data && data[0] && data[0].email) {
@@ -52,24 +56,36 @@ export default function LoginPage() {
                     setLoading(false);
                     return;
                 }
-            } catch (e) {
-                console.error("Username lookup failed:", e);
-                setError("Netzwerkfehler. Bitte E-Mail verwenden.");
+            } catch (e: unknown) {
+                const errMsg = e instanceof Error ? e.message : String(e);
+                console.error("Username lookup failed:", errMsg);
+                if (errMsg.includes('abort')) {
+                    setError("Zeitüberschreitung. Bitte Internetverbindung prüfen.");
+                } else {
+                    setError(`Netzwerkfehler: ${errMsg}`);
+                }
                 setLoading(false);
                 return;
             }
         }
 
-        const { error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        });
+        try {
+            const { error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            });
 
-        if (error) {
-            setError(error.message);
+            if (error) {
+                setError(error.message);
+                setLoading(false);
+            } else {
+                router.push('/dashboard');
+            }
+        } catch (e: unknown) {
+            const errMsg = e instanceof Error ? e.message : String(e);
+            console.error("Sign-in failed:", errMsg);
+            setError(`Login fehlgeschlagen: ${errMsg}`);
             setLoading(false);
-        } else {
-            router.push('/dashboard');
         }
     }
 
@@ -109,12 +125,13 @@ export default function LoginPage() {
                             />
                         </div>
                         <div className="text-right">
-                            <Link
-                                href="/auth/forgot-password"
+                            <button
+                                type="button"
+                                onClick={() => router.push('/auth/forgot-password/')}
                                 className="text-xs font-medium text-blue-600 hover:text-blue-500"
                             >
                                 Passwort vergessen?
-                            </Link>
+                            </button>
                         </div>
                     </div>
 

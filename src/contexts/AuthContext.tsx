@@ -23,6 +23,7 @@ interface AuthContextType {
     session: Session | null;
     loading: boolean;
     signOut: () => Promise<void>;
+    setProfile: React.Dispatch<React.SetStateAction<Profile | null>>;
 }
 
 // ============================================================================
@@ -94,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, profile, session, loading, signOut: handleSignOut }}>
+        <AuthContext.Provider value={{ user, profile, session, loading, signOut: handleSignOut, setProfile }}>
             {children}
         </AuthContext.Provider>
     );

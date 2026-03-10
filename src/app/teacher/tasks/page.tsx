@@ -287,14 +287,14 @@ export default function TeacherTasksPage() {
                                                                         {task.course_type && (
                                                                             <span className={cn(
                                                                                 "px-2 py-1 rounded text-xs font-bold",
-                                                                                task.course_type === 'LK' ? "bg-amber-100 text-amber-700" :
-                                                                                    task.course_type === 'GK' ? "bg-blue-100 text-blue-700" :
-                                                                                        task.course_type === 'm' ? "bg-purple-100 text-purple-700" :
-                                                                                            task.course_type === 'a' ? "bg-emerald-100 text-emerald-700" :
+                                                                                task.course_type.toUpperCase() === 'LK' ? "bg-amber-100 text-amber-700" :
+                                                                                    task.course_type.toUpperCase() === 'GK' ? "bg-blue-100 text-blue-700" :
+                                                                                        task.course_type.toUpperCase() === 'M' ? "bg-purple-100 text-purple-700" :
+                                                                                            task.course_type.toUpperCase() === 'A' ? "bg-emerald-100 text-emerald-700" :
                                                                                                 "bg-gray-100 text-gray-700"
                                                                             )}>
-                                                                                {task.course_type === 'm' ? 'mündlich' :
-                                                                                    task.course_type === 'a' ? 'anderes' :
+                                                                                {task.course_type.toUpperCase() === 'M' ? 'Mündlich' :
+                                                                                    task.course_type.toUpperCase() === 'A' ? 'Anrechnung' :
                                                                                         task.course_type}
                                                                             </span>
                                                                         )}

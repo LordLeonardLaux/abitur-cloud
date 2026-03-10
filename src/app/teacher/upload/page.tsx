@@ -272,7 +272,7 @@ function UploadContent() {
                                     <span className="font-medium">Datei auswählen</span>
                                 </div>
                             )}
-                            <input type="file" accept="application/pdf" className="hidden" onChange={handleFileChange} />
+                            <input type="file" accept="application/pdf,image/png,image/jpeg,image/jpg" className="hidden" onChange={handleFileChange} />
                         </label>
                     </div>
 

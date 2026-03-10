@@ -6,10 +6,12 @@ import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
 import { SUBJECTS } from '@/lib/constants';
 import { Topic, TopicFile, Profile } from '@/lib/types';
-import { ChevronLeft, ChevronRight, File as FileIcon, X, Menu } from 'lucide-react';
+import { ChevronLeft, ChevronRight, File as FileIcon, X, Menu, ThumbsUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import PDFViewer from '@/components/ui/PDFViewer';
+import { useAuth } from '@/contexts/AuthContext';
+import { voteUseful, getUserVotes } from '@/services/xpService';
 
 function FriendTopicContent() {
     const searchParams = useSearchParams();
@@ -29,6 +31,9 @@ function FriendTopicContent() {
     const [totalTopics, setTotalTopics] = useState(0);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [showFileList, setShowFileList] = useState(false);
+    const { user, profile: authProfile, setProfile: setAuthProfile } = useAuth();
+    const [votedFiles, setVotedFiles] = useState<Set<string>>(new Set());
+    const [votingFileId, setVotingFileId] = useState<string | null>(null);
 
     const subject = SUBJECTS.find(s => s.id === subjectId);
 
@@ -47,7 +52,14 @@ function FriendTopicContent() {
             setFiles(data || []);
             if (data && data.length > 0) setSelectedFileIndex(0);
         });
-    }, [topicId, friendId, subjectId, semester]);
+
+        // Load existing votes
+        if (user?.id) {
+            getUserVotes(user.id).then(votes => {
+                setVotedFiles(new Set(votes));
+            }).catch(err => console.error('Load votes error:', err));
+        }
+    }, [topicId, friendId, subjectId, semester, user]);
 
     useEffect(() => {
         const loadPdf = async () => {
@@ -201,6 +213,38 @@ function FriendTopicContent() {
 
                     <div className="flex-1 w-full h-full overflow-hidden relative">
                         <PDFViewer url={pdfUrl} topicId={topicId || undefined} />
+
+                        {/* Floating Action Button (FAB) for 'Nützlich' */}
+                        {files[selectedFileIndex] && user?.id !== friendId && authProfile?.rank_visible !== false && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const currentFile = files[selectedFileIndex];
+                                    if (!user || votedFiles.has(currentFile.id) || votingFileId === currentFile.id) return;
+                                    voteUseful(user.id, currentFile.id, friendId as string, 'topic_file').then(result => {
+                                        if (result.success || result.alreadyVoted) {
+                                            setVotedFiles(prev => new Set([...prev, currentFile.id]));
+                                        }
+                                    }).finally(() => setVotingFileId(null));
+                                }}
+                                className={cn(
+                                    "absolute bottom-24 right-6 md:bottom-10 md:right-10 z-[60] flex items-center justify-center w-14 h-14 md:w-16 md:h-16 rounded-full shadow-2xl transition-all active:scale-95 group",
+                                    votedFiles.has(files[selectedFileIndex]?.id)
+                                        ? "bg-green-500 text-white shadow-green-500/30 ring-4 ring-green-50"
+                                        : "bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-blue-500/30 hover:shadow-blue-500/50 hover:-translate-y-1"
+                                )}
+                                title={votedFiles.has(files[selectedFileIndex]?.id) ? 'Bereits bewertet' : 'Hilfreich (+3 XP)'}
+                            >
+                                <ThumbsUp size={28} className={cn("transition-transform", votedFiles.has(files[selectedFileIndex]?.id) ? "fill-white" : "group-hover:rotate-12")} strokeWidth={votedFiles.has(files[selectedFileIndex]?.id) ? 2 : 2.5} />
+
+                                {/* XP Badge */}
+                                {!votedFiles.has(files[selectedFileIndex]?.id) && (
+                                    <span className="absolute -top-2 -right-2 bg-pink-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm border-2 border-white">
+                                        +3 XP
+                                    </span>
+                                )}
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

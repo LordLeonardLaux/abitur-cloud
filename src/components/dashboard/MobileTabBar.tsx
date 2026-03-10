@@ -2,13 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutGrid, MessageCircle, Calendar, ClipboardList } from 'lucide-react';
+import { LayoutGrid, Users, Calendar, ClipboardList } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTaskHub } from '@/hooks/useTaskHub';
 
 const tabs = [
     { href: '/dashboard', label: 'Übersicht', icon: LayoutGrid },
-    { href: '/chat', label: 'Chat', icon: MessageCircle },
+    { href: '/chat', label: 'Kontakt', icon: Users },
     { href: '/materials', label: 'Kalender', icon: Calendar },
 ] as const;
 

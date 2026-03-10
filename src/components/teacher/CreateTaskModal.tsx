@@ -192,8 +192,8 @@ export function CreateTaskModal({ isOpen, onClose, onSuccess }: CreateTaskModalP
                                             <option value="">Alle</option>
                                             <option value="LK">Leistungskurs (LK)</option>
                                             <option value="GK">Grundkurs (GK)</option>
-                                            <option value="m">Mündlich (m)</option>
-                                            <option value="a">Anderes (a)</option>
+                                            <option value="M">Mündlich (M)</option>
+                                            <option value="A">Anrechnung (A)</option>
                                         </select>
                                     </div>
 

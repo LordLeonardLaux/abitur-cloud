@@ -19,8 +19,8 @@ function ProfileContent() {
 
     const [profile, setProfile] = useState<Profile | null>(null);
     const [topics, setTopics] = useState<Record<string, boolean>>({});
+    const [userSubjects, setUserSubjects] = useState<Record<string, string>>({});
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    // const supabase = createClient(); // uses singleton
 
     useEffect(() => {
         if (user && userId === user.id) {
@@ -28,18 +28,29 @@ function ProfileContent() {
             return;
         }
         if (userId) {
-            supabase.from('profiles').select('*').eq('id', userId).single().then(({ data }) => setProfile(data));
+            // Import dynamically or explicitly (supabaseFetch is from baseRepository)
+            import('@/repositories/baseRepository').then(({ supabaseFetch }) => {
+                // Fetch Friend Profile
+                supabaseFetch<Profile[]>(`profiles?id=eq.${userId}`).then(data => {
+                    if (data && data.length > 0) setProfile(data[0]);
+                });
 
-            // Fetch all topics for this user to determine content availability
-            supabase.from('topics').select('subject_id')
-                .eq('owner_id', userId)
-                .then(({ data }) => {
+                // Fetch Friend's Subjects
+                supabaseFetch<any[]>(`user_subjects?user_id=eq.${userId}`).then(data => {
+                    const subjectMap: Record<string, string> = {};
+                    data?.forEach(s => { subjectMap[s.subject_id] = s.subject_type; });
+                    setUserSubjects(subjectMap);
+                });
+
+                // Fetch Friend's Topics availability
+                supabaseFetch<any[]>(`topics?owner_id=eq.${userId}&select=subject_id`).then(data => {
                     const topicMap: Record<string, boolean> = {};
                     data?.forEach((t: any) => {
                         topicMap[t.subject_id] = true;
                     });
                     setTopics(topicMap);
                 });
+            });
         }
     }, [userId, user, router]);
 
@@ -74,12 +85,19 @@ function ProfileContent() {
                 <div>
                     <h2 className="flex items-center gap-2 text-xl font-bold text-gray-800 mb-6"><GraduationCap className="text-blue-500" /> Fächer</h2>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {SUBJECTS.map(s => (
-                            <Link key={s.id} href={`/profile/subject?id=${s.id}&userId=${userId}`} className="group bg-white rounded-2xl p-4 md:p-6 border border-gray-100 shadow-sm hover:shadow-lg transition-all">
-                                <div className={cn("w-3 h-3 rounded-full mb-3 md:mb-4", topics[s.id] ? "bg-green-500" : "bg-red-500")}></div>
-                                <h3 className="text-base md:text-lg font-bold text-gray-900 group-hover:text-blue-600">{s.name}</h3>
-                            </Link>
-                        ))}
+                        {SUBJECTS.filter(s => !!userSubjects[s.id]).length === 0 ? (
+                            <p className="col-span-full text-gray-400 font-medium">Keine Fächer verfügbar.</p>
+                        ) : (
+                            SUBJECTS.filter(s => !!userSubjects[s.id]).map(s => (
+                                <Link key={s.id} href={`/profile/subject?id=${s.id}&userId=${userId}`} className="group relative bg-white rounded-2xl p-4 md:p-6 border border-gray-100 shadow-sm hover:shadow-lg transition-all">
+                                    <div className={cn("w-3 h-3 rounded-full mb-3 md:mb-4", topics[s.id] ? "bg-green-500" : "bg-red-500")}></div>
+                                    <h3 className="text-base md:text-lg font-bold text-gray-900 group-hover:text-blue-600">{s.name}</h3>
+                                    <span className="absolute top-4 right-4 text-[10px] md:text-xs font-bold uppercase text-gray-400 bg-gray-50 px-2 py-1 rounded">
+                                        {userSubjects[s.id]}
+                                    </span>
+                                </Link>
+                            ))
+                        )}
                     </div>
                 </div>
             </div>

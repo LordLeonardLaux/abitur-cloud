@@ -88,20 +88,21 @@ export function useTaskHub(): UseTaskHubReturn {
                 // Students: fetch their subscribed subjects from user_subjects table
                 const { data: userSubjectsData, error: subjectsError } = await supabase
                     .from('user_subjects')
-                    .select('subject_id')
+                    .select('subject_id, subject_type')
                     .eq('user_id', user.id);
 
                 if (subjectsError) {
                     console.error('[useTaskHub] Error fetching user subjects:', subjectsError);
                 }
 
-                const userSubjectIds = new Set<string>(
-                    (userSubjectsData || []).map((s: any) => s.subject_id)
-                );
+                const userSubjectTypes = new Map<string, string>();
+                (userSubjectsData || []).forEach((s: any) => {
+                    userSubjectTypes.set(s.subject_id, s.subject_type); // e.g. "LK", "GK"
+                });
 
-                console.log('[useTaskHub] Student subjects:', Array.from(userSubjectIds));
+                console.log('[useTaskHub] Student subjects:', Array.from(userSubjectTypes.keys()));
 
-                if (userSubjectIds.size === 0) {
+                if (userSubjectTypes.size === 0) {
                     console.log('[useTaskHub] No subjects found for student, showing all tasks');
                 }
 
@@ -121,11 +122,16 @@ export function useTaskHub(): UseTaskHubReturn {
                 // Filter tasks based on user's subjects (if they have subjects selected)
                 const filteredTasks = (allTasks || []).filter((task: TeacherTask) => {
                     // If student has no subjects configured, show ALL tasks
-                    if (userSubjectIds.size === 0) return true;
+                    if (userSubjectTypes.size === 0) return true;
 
                     // Check if user has this subject
-                    if (userSubjectIds.size > 0 && !userSubjectIds.has(task.subject_id)) {
-                        // console.log(`[useTaskHub] Filtered out ${task.title}: Subject mismatch (${task.subject_id})`);
+                    const userType = userSubjectTypes.get(task.subject_id);
+                    if (!userType) {
+                        return false;
+                    }
+
+                    // Check course_type (e.g. task is only for LK, but user has GK)
+                    if (task.course_type && task.course_type.toUpperCase() !== userType.toUpperCase()) {
                         return false;
                     }
 
@@ -133,7 +139,6 @@ export function useTaskHub(): UseTaskHubReturn {
                     // Only filter if BOTH task and profile have a grade level defined.
                     // If profile.grade_level is missing, we assume the student wants to see all grades (or hasn't configured it yet).
                     if (task.grade_level && profile.grade_level && profile.grade_level !== task.grade_level) {
-                        // console.log(`[useTaskHub] Filtered out ${task.title}: Grade mismatch (Task: ${task.grade_level}, User: ${profile.grade_level})`);
                         return false;
                     }
 

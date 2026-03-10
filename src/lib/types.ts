@@ -7,8 +7,15 @@ export interface Profile {
     role?: 'student' | 'smartboard' | 'teacher' | 'admin';
     subjects?: string[]; // For teachers: list of subject_ids they teach
     is_approved?: boolean;
+    xp?: number;
+    rank_visible?: boolean;
+    ai_settings?: {
+        enabled: boolean;
+        provider: 'gemini' | 'openai';
+        apiKey: string;
+        model?: string;
+    };
 }
-
 export interface Exam {
     id: string;
     subject_id: string;

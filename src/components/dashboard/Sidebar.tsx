@@ -12,7 +12,7 @@ import { SUBJECTS } from '@/lib/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
 import { Profile } from '@/lib/types';
-import { LogOut, Users, Search, X, MessageCircle, FileQuestion, BookOpen, Calendar, GraduationCap, Sparkles, ClipboardList, Shield, UserPlus, Check } from 'lucide-react';
+import { LogOut, Users, Search, X, MessageCircle, FileQuestion, BookOpen, Calendar, GraduationCap, Sparkles, ClipboardList, Shield, UserPlus, Check, Settings, Trophy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ChatWindow } from './ChatWindow';
 import { MaterialRequestModal } from './MaterialRequestModal';
@@ -21,6 +21,7 @@ import { isMobile, showAIFeatures } from '@/lib/platform';
 import { useFriends } from '@/hooks/useFriends';
 import { TaskHub } from './TaskHub';
 import { CreateTaskModal } from '../teacher/CreateTaskModal';
+import { getRank, getAvatarWrapperStyle } from '@/lib/ranks';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -96,6 +97,35 @@ export function Sidebar({ isOpen, onClose, onChatOpen }: SidebarProps) {
                 </div>
             </div>
 
+            {/* User Profile Card with Rank Border */}
+            {profile && (
+                <div className="px-4 py-3 border-b border-gray-100">
+                    <Link href="/settings/" className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 transition-all">
+                        <div style={getAvatarWrapperStyle(profile.xp || 0, profile.rank_visible !== false)}>
+                            {profile.avatar_url && profile.avatar_url.trim() !== '' ? (
+                                <img
+                                    src={profile.avatar_url}
+                                    alt={profile.full_name}
+                                    className="w-10 h-10 rounded-full object-cover"
+                                />
+                            ) : (
+                                <div className="w-10 h-10 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                                    {profile.full_name?.charAt(0)}
+                                </div>
+                            )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <p className="text-sm font-bold text-gray-900 truncate">{profile.full_name}</p>
+                            {profile.rank_visible !== false && (
+                                <p className="text-xs font-medium truncate" style={{ color: getRank(profile.xp || 0).color }}>
+                                    {getRank(profile.xp || 0).emoji} {getRank(profile.xp || 0).name}
+                                </p>
+                            )}
+                        </div>
+                    </Link>
+                </div>
+            )}
+
             <div className="p-4 border-b border-gray-100">
                 <Link href="/subjects/selection" className="flex items-center gap-3 w-full p-3 bg-gray-50 text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition-all font-medium text-sm">
                     <BookOpen size={18} />
@@ -128,7 +158,7 @@ export function Sidebar({ isOpen, onClose, onChatOpen }: SidebarProps) {
                     </div>
                 )}
 
-                {showAIFeatures() && (
+                {showAIFeatures() && profile?.ai_settings?.enabled && (
                     <button onClick={() => { setIsAIChatOpen(true); onClose(); }} className="flex items-center gap-3 w-full p-3 mt-2 bg-gradient-to-br from-indigo-50 to-purple-50 text-indigo-700 hover:from-indigo-100 hover:to-purple-100 rounded-xl transition-all font-bold text-sm border border-indigo-100 shadow-sm group">
                         <div className="p-1.5 bg-white rounded-lg shadow-sm group-hover:scale-110 transition-transform">
                             <Sparkles size={16} className="text-indigo-600" />
@@ -137,20 +167,37 @@ export function Sidebar({ isOpen, onClose, onChatOpen }: SidebarProps) {
                     </button>
                 )}
 
+                <Link href="/settings/" className="flex items-center gap-3 w-full p-3 mt-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-xl transition-all font-medium text-sm">
+                    <Settings size={18} />
+                    Einstellungen
+                </Link>
+
+                {profile?.rank_visible !== false && (
+                    <Link href="/rank/" className="flex items-center gap-3 w-full p-3 mt-1 text-purple-600 hover:text-purple-700 hover:bg-purple-50 rounded-xl transition-all font-medium text-sm">
+                        <Trophy size={18} />
+                        <span>Mein Rang</span>
+                        {profile?.xp != null && profile.xp > 0 && (
+                            <span className="ml-auto text-xs font-bold bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">
+                                {profile.xp} XP
+                            </span>
+                        )}
+                    </Link>
+                )}
+
                 <button onClick={() => signOut()} className="flex items-center gap-3 w-full p-3 mt-2 text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all font-medium text-sm">
                     <LogOut size={18} />
                     <span>Abmelden</span>
                 </button>
             </div>
 
-            <div className="p-4 border-b border-gray-100">
+            <div className="hidden md:block p-4 border-b border-gray-100">
                 <div className="flex gap-2">
                     <input type="text" placeholder="Freunde suchen..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     <button className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"><Search size={18} /></button>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="hidden md:block flex-1 overflow-y-auto p-4">
                 {/* Search Results */}
                 {searchQuery && searchResults.length > 0 && (
                     <div className="mb-4">

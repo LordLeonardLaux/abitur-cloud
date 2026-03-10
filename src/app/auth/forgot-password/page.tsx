@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { Loader2, Mail, ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 export default function ForgotPasswordPage() {
+    const router = useRouter();
     const [email, setEmail] = useState('');
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -79,13 +80,14 @@ export default function ForgotPasswordPage() {
                     </button>
 
                     <div className="text-center">
-                        <Link
-                            href="/login"
+                        <button
+                            type="button"
+                            onClick={() => router.push('/login/')}
                             className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors"
                         >
                             <ArrowLeft size={16} />
                             Zurück zum Login
-                        </Link>
+                        </button>
                     </div>
                 </form>
             </div>

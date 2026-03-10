@@ -20,6 +20,7 @@ import { FlashcardGenButton } from '@/components/ai/FlashcardGenButton';
 import AIChatWindow from '@/components/ai/AIChatWindow';
 import FlashcardViewer from '@/components/ai/FlashcardViewer';
 import { Flashcard } from '@/lib/flashcardPdfGenerator';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Configure PDF.js worker - use explicit https CDN for Electron compatibility
 if (typeof window !== 'undefined') {
@@ -36,9 +37,11 @@ function getInitialWidth(): number {
 interface PDFViewerProps {
     url: string | null;
     topicId?: string;
+    renderToolbarExtra?: React.ReactNode;
 }
 
-export default function PDFViewer({ url, topicId }: PDFViewerProps) {
+export default function PDFViewer({ url, topicId, renderToolbarExtra }: PDFViewerProps) {
+    const { profile } = useAuth();
     const [numPages, setNumPages] = useState<number | null>(null);
     const [pageNumber, setPageNumber] = useState<number>(1);
     const [scale, setScale] = useState<number>(1.0);
@@ -57,8 +60,10 @@ export default function PDFViewer({ url, topicId }: PDFViewerProps) {
 
     // Track if we've already done the initial load for this URL to prevent loops
     const hasLoadedRef = useRef<string | null>(null);
-    // Extra state to trigger a SINGLE force-rerender after loading
     const [forceRenderPhase, setForceRenderPhase] = useState<'idle' | 'loading' | 'ready'>('idle');
+
+    // Detect if the file is an image based on the URL extension or path
+    const isImage = url ? /\.(jpeg|jpg|png|gif|webp)(\?.*)?$/i.test(url) : false;
 
     // Reset on URL change
     useEffect(() => {
@@ -169,6 +174,8 @@ export default function PDFViewer({ url, topicId }: PDFViewerProps) {
             return;
         }
 
+        if (isImage) return;
+
         console.log("[PDFViewer] Success:", pdf.numPages, "pages");
         hasLoadedRef.current = url;
 
@@ -201,11 +208,12 @@ export default function PDFViewer({ url, topicId }: PDFViewerProps) {
     }, [extractText, url]);
 
     const onDocumentLoadError = useCallback((err: Error) => {
+        if (isImage) return;
         console.error("[PDFViewer] Error:", err.message);
         setError(err.message);
         setLoading(false);
         hasLoadedRef.current = null; // Allow retry
-    }, []);
+    }, [isImage]);
 
     const handleExternalOpen = () => {
         if (url) window.open(url, '_blank');
@@ -213,6 +221,33 @@ export default function PDFViewer({ url, topicId }: PDFViewerProps) {
 
     // Always have a valid width for rendering - use a reasonable minimum
     const renderWidth = Math.max(containerWidth - 48, 300);
+
+    // Handle Image Loading
+    useEffect(() => {
+        if (isImage && url && url !== hasLoadedRef.current) {
+            hasLoadedRef.current = url;
+            setLoading(false);
+            setError(null);
+
+            // Pass the image directly to the AI Chat 
+            // We fetch the image and convert it to base64 so the AI Chat can send it to the LLM
+            fetch(url)
+                .then(response => response.blob())
+                .then(blob => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        const base64data = reader.result as string;
+                        setPageImages([{
+                            base64: base64data,
+                            mimeType: blob.type || 'image/png'
+                        }]);
+                        setExtractedText('[Ein Bild wurde hochgeladen. Bitte betrachte das Bild.]');
+                    }
+                    reader.readAsDataURL(blob);
+                })
+                .catch(err => console.error("[PDFViewer] Could not convert image to base64 for AI:", err));
+        }
+    }, [url, isImage]);
 
     if (!url) {
         return (
@@ -225,9 +260,11 @@ export default function PDFViewer({ url, topicId }: PDFViewerProps) {
     return (
         <div className="flex flex-col h-full bg-white overflow-hidden relative" ref={containerRef}>
             {/* Toolbar */}
-            <div className="bg-white border-b border-gray-100 p-2 flex items-center justify-between shrink-0 z-20 shadow-sm overflow-x-auto">
-                <div className="flex items-center gap-3">
-                    {!isContinuous && (
+            <div className="bg-white border-b border-gray-100 p-2 flex items-center justify-between shrink-0 z-20 shadow-sm overflow-x-auto gap-2">
+                <div className="flex items-center gap-2">
+                    {renderToolbarExtra}
+
+                    {!isContinuous && !isImage && (
                         <div className="flex items-center gap-1.5 bg-gray-50 rounded-lg p-1 border border-gray-100">
                             <button
                                 onClick={() => setPageNumber(p => Math.max(1, p - 1))}
@@ -259,42 +296,47 @@ export default function PDFViewer({ url, topicId }: PDFViewerProps) {
                         </button>
                     </div>
 
-                    <button
-                        onClick={() => setIsContinuous(!isContinuous)}
-                        className={cn(
-                            "hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border",
-                            isContinuous
-                                ? "bg-black text-white border-black shadow-md"
-                                : "bg-white text-gray-500 border-gray-100 hover:border-gray-200"
-                        )}
-                    >
-                        {isContinuous ? "Einzelseiten" : "Endlos"}
-                    </button>
+                    {!isImage && (
+                        <button
+                            onClick={() => setIsContinuous(!isContinuous)}
+                            className={cn(
+                                "hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border",
+                                isContinuous
+                                    ? "bg-black text-white border-black shadow-md"
+                                    : "bg-white text-gray-500 border-gray-100 hover:border-gray-200"
+                            )}
+                        >
+                            {isContinuous ? "Einzelseiten" : "Endlos"}
+                        </button>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {showAIFeatures() && (
+                    {showAIFeatures() && profile?.ai_settings?.enabled && (
                         <>
                             {extractedText && (
                                 <button
                                     onClick={() => {
-                                        setAiInitialMessage("Zusammenfasse dieses Dokument für mich in Stichpunkten.");
+                                        setAiInitialMessage(isImage ? "Erkläre mir dieses Bild." : "Zusammenfasse dieses Dokument für mich in Stichpunkten.");
                                         setIsAIChatOpen(true);
                                     }}
-                                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-tr from-blue-600 to-blue-500 text-white hover:shadow-lg hover:shadow-blue-100 transition-all font-bold text-[10px] uppercase tracking-wider shadow-sm"
+                                    className="flex items-center gap-1.5 md:gap-2 px-2 md:px-3 py-1.5 md:py-2 rounded-xl bg-gradient-to-tr from-blue-600 to-blue-500 text-white hover:shadow-lg transition-all font-bold text-[10px] md:text-sm uppercase tracking-wider shadow-sm"
                                 >
                                     <Sparkles size={14} />
-                                    KI-Hilfe
+                                    <span className="hidden md:inline">KI-Hilfe</span>
+                                    <span className="md:hidden">KI</span>
                                 </button>
                             )}
-                            <FlashcardGenButton
-                                pdfText={extractedText}
-                                topicId={topicId || 'materials'}
-                                onSuccess={(cards) => {
-                                    setFlashcards(cards);
-                                    setIsFlashcardViewerOpen(true);
-                                }}
-                            />
+                            {!isImage && (
+                                <FlashcardGenButton
+                                    pdfText={extractedText}
+                                    topicId={topicId || 'materials'}
+                                    onSuccess={(cards) => {
+                                        setFlashcards(cards);
+                                        setIsFlashcardViewerOpen(true);
+                                    }}
+                                />
+                            )}
                         </>
                     )}
 
@@ -334,8 +376,29 @@ export default function PDFViewer({ url, topicId }: PDFViewerProps) {
                     </div>
                 )}
 
+                {/* Image Rendering */}
+                {isImage && (
+                    <div className="flex justify-center items-start w-full h-full p-4 overflow-auto">
+                        <img
+                            src={url}
+                            alt="Document Image"
+                            style={{
+                                width: `${renderWidth * scale}px`,
+                                maxWidth: 'none',
+                                objectFit: 'contain',
+                                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                                borderRadius: '0.5rem',
+                                border: '1px solid #e5e7eb',
+                                backgroundColor: 'white',
+                                transition: 'width 0.2s ease-in-out'
+                            }}
+                        />
+                    </div>
+                )}
+
+                {/* PDF Rendering */}
                 {/* Only render when ready to prevent blank canvas */}
-                {forceRenderPhase !== 'idle' && (
+                {!isImage && forceRenderPhase !== 'idle' && (
                     <Document
                         file={url}
                         onLoadSuccess={onDocumentLoadSuccess}
