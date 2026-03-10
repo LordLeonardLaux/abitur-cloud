@@ -1,8 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-
 const FLASHCARD_PROMPT = `Du bist ein Experte für die Erstellung von Lernmaterialien. 
 Erstelle aus dem folgenden Text hochwertige Karteikarten für das Abitur.
 Jede Karteikarte muss eine Frage (front) und eine Antwort (back) haben.
@@ -13,24 +11,33 @@ Gib das Ergebnis ausschließlich als JSON-Array von Objekten im folgenden Format
   ...
 ]`;
 
-const model = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash",
-    systemInstruction: FLASHCARD_PROMPT,
-    generationConfig: {
-        responseMimeType: "application/json",
-    }
-});
-
 export async function POST(req: Request) {
     try {
-        const { content } = await req.json();
+        const { content, aiSettings } = await req.json();
 
-        if (!process.env.GEMINI_API_KEY) {
+        let apiKey = null;
+        let modelName = "gemini-2.5-pro";
+
+        if (aiSettings?.enabled && aiSettings.apiKey) {
+            apiKey = aiSettings.apiKey;
+            if (aiSettings.model) modelName = aiSettings.model;
+        }
+
+        if (!apiKey) {
             return NextResponse.json(
-                { error: "Gemini API Key is not configured." },
-                { status: 500 }
+                { error: "Bitte hinterlege zuerst deinen eigenen KI-API-Schlüssel in den Einstellungen." },
+                { status: 400 }
             );
         }
+
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({
+            model: modelName,
+            systemInstruction: FLASHCARD_PROMPT,
+            generationConfig: {
+                responseMimeType: "application/json",
+            }
+        });
 
         if (!content || content.length < 50) {
             return NextResponse.json(

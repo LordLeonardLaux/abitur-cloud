@@ -2,9 +2,11 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Send, Bot, User, Loader2, Sparkles, History } from 'lucide-react';
-import { getApiUrl } from '@/lib/platform';
+import { getApiUrl, isMobile } from '@/lib/platform';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAIChatHistory } from '@/hooks/useAIChatHistory';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { useAuth } from '@/contexts/AuthContext';
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -31,6 +33,9 @@ export default function AIChatWindow({ isOpen, onClose, context, initialMessage,
         loading: historyLoading,
         saveMessages,
     } = useAIChatHistory({ topicId, materialId });
+
+    const { profile } = useAuth();
+    const aiSettings = profile?.ai_settings;
 
     const [messages, setMessages] = useState<Message[]>([
         { role: 'ai', content: 'Hallo! Ich bin deine Abitur Cloud Lernhilfe. Wie kann ich dir heute beim Lernen helfen?' }
@@ -69,17 +74,128 @@ export default function AIChatWindow({ isOpen, onClose, context, initialMessage,
 
     const callAI = async (msgs: Message[], context?: string, includeImages: boolean = false) => {
         try {
+            // On native mobile (iOS/Android), call AI directly from the client
+            // because the Next.js API routes don't exist on static exports
+            if (isMobile()) {
+                let apiKey = null;
+                let provider = 'gemini';
+                let modelName = 'gemini-2.5-pro';
+
+                // Overlay user AI settings if enabled
+                if (aiSettings?.enabled && aiSettings.apiKey) {
+                    apiKey = aiSettings.apiKey;
+                    provider = aiSettings.provider;
+                    if (aiSettings.model) modelName = aiSettings.model;
+                }
+
+                if (!apiKey) throw new Error('Bitte hinterlege zuerst deinen eigenen KI-Schlüssel in den Einstellungen!');
+
+                const hasImgs = includeImages && images && images.length > 0;
+
+                const systemPrompt = 'Du bist die Abitur Cloud Lernhilfe, ein hilfreicher KI-Assistent für Schüler der Oberstufe. Dein Ziel ist es, Schülern beim Verständnis von Lerninhalten zu helfen, Konzepte zu erklären und Fragen zu den Unterrichtsmaterialien zu beantworten. Bleibe sachlich, freundlich und unterstützend. Erkläre komplexe Sachverhalte einfach und verständlich. Wenn du Bilder von handgeschriebenen Notizen, Diagrammen oder PDF-Seiten erhältst, analysiere diese sorgfältig und transkribiere den handschriftlichen Inhalt. Beziehe dich auf die visuellen Inhalte, wenn sie relevant sind. WICHTIG: Verwende NIEMALS LaTeX-Notation (kein $, \\frac, \\vec, \\cdot etc.). Schreibe Mathematik immer in lesbarem Klartext mit Unicode-Zeichen.';
+
+                if (provider === 'openai') {
+                    // Raw REST fetch for OpenAI on Mobile
+                    let userText = msgs[msgs.length - 1].content;
+                    if (context) userText = `KONTEXT:\n${context}\n\nFRAGE:\n${userText}`;
+
+                    const openAiMessages = [
+                        { role: 'system', content: systemPrompt },
+                        ...msgs.slice(0, -1).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+                        { role: 'user', content: userText }
+                    ];
+
+                    // Attach images to the very last message if available
+                    if (hasImgs && images) {
+                        const contentArray: any[] = [{ type: 'text', text: userText }];
+                        for (let i = 0; i < Math.min(images.length, 2); i++) {
+                            const img = images[i];
+                            if (img.base64 && img.mimeType) {
+                                contentArray.push({
+                                    type: 'image_url',
+                                    image_url: { url: `data:${img.mimeType};base64,${img.base64.replace(/^data:image\/\w+;base64,/, '')}` }
+                                });
+                            }
+                        }
+                        openAiMessages[openAiMessages.length - 1].content = contentArray as any;
+                    }
+
+                    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${apiKey}`
+                        },
+                        body: JSON.stringify({
+                            model: hasImgs ? 'gpt-4o' : 'gpt-4o-mini',
+                            messages: openAiMessages
+                        })
+                    });
+
+                    if (!res.ok) throw new Error('OpenAI API Fehler.');
+                    const data = await res.json();
+                    return data.choices[0].message.content;
+
+                } else {
+                    // Gemini via SDK
+                    const genAI = new GoogleGenerativeAI(apiKey);
+                    const model = genAI.getGenerativeModel({
+                        model: modelName,
+                        systemInstruction: systemPrompt
+                    });
+
+                    // Build history (all but last message)
+                    const history = msgs.slice(0, -1).map(m => ({
+                        role: m.role === 'user' ? 'user' as const : 'model' as const,
+                        parts: [{ text: m.content }],
+                    }));
+
+                    const chatSession = model.startChat({
+                        history,
+                        generationConfig: { maxOutputTokens: 4096 },
+                    });
+
+                    const currentMessage = msgs[msgs.length - 1].content;
+
+                    // Build multimodal parts
+                    const parts: any[] = [];
+                    if (context) {
+                        parts.push({ text: `KONTEXT AUS DEM LERNMATERIAL:\n${context}\n\n` });
+                    }
+                    if (hasImgs && images) {
+                        parts.push({ text: 'BILDER DER SEITEN (analysiere handschriftliche Inhalte sorgfältig):\n' });
+                        for (let i = 0; i < Math.min(images.length, 2); i++) {
+                            const img = images[i];
+                            if (img.base64 && img.mimeType) {
+                                parts.push({
+                                    inlineData: {
+                                        data: img.base64.replace(/^data:image\/\w+;base64,/, ''),
+                                        mimeType: img.mimeType
+                                    }
+                                });
+                                parts.push({ text: `[Seite ${i + 1}]\n` });
+                            }
+                        }
+                    }
+                    parts.push({ text: `\nFRAGE DES SCHÜLERS:\n${currentMessage}` });
+
+                    const result = await chatSession.sendMessage(parts);
+                    return result.response.text();
+                }
+            }
+
             if (typeof window !== 'undefined' && 'electron' in window) {
                 // Electron IPC
                 const result = await (window as any).electron.aiChat({
                     messages: msgs,
                     context: context,
-                    images: includeImages ? images : undefined
+                    images: includeImages ? images : undefined,
+                    aiSettings: aiSettings
                 });
                 if (result.error) throw new Error(result.error);
                 return result.content;
             } else {
-                // Web API
+                // Web API (server-side route)
                 const apiUrl = getApiUrl('/api/ai/chat');
                 console.log('[AIChatWindow] Calling:', apiUrl);
 
@@ -95,8 +211,8 @@ export default function AIChatWindow({ isOpen, onClose, context, initialMessage,
                             content: m.content
                         })),
                         context: context,
-                        // Include images for first message (vision analysis)
-                        images: includeImages ? images : undefined
+                        images: includeImages ? images : undefined,
+                        aiSettings: aiSettings
                     }),
                 });
 
@@ -113,7 +229,11 @@ export default function AIChatWindow({ isOpen, onClose, context, initialMessage,
             }
         } catch (error: any) {
             console.error('[AIChatWindow] AI error:', error);
-            throw new Error('Die KI-Lernhilfe ist gerade noch nicht verfügbar. Wir arbeiten daran! 🚧');
+            // Show real error on mobile for debugging, generic on web
+            const msg = isMobile()
+                ? `Fehler: ${error.message || error}`
+                : 'Die KI-Lernhilfe ist gerade noch nicht verfügbar. Wir arbeiten daran! 🚧';
+            throw new Error(msg);
         }
     };
 

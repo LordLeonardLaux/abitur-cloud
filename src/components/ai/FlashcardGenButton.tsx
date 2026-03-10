@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { Sparkles, Loader2, Check, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getApiUrl } from "@/lib/platform";
+import { getApiUrl, isMobile } from "@/lib/platform";
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Flashcard {
     front: string;
@@ -16,7 +18,19 @@ interface FlashcardGenButtonProps {
     onSuccess?: (flashcards: Flashcard[]) => void;
 }
 
+const FLASHCARD_PROMPT = `Du bist ein Experte für die Erstellung von Lernmaterialien. 
+Erstelle aus dem folgenden Text hochwertige Karteikarten für das Abitur.
+Jede Karteikarte muss eine Frage (front) und eine Antwort (back) haben.
+Die Antwort sollte präzise, aber umfassend sein.
+Gib das Ergebnis ausschließlich als JSON-Array von Objekten im folgenden Format zurück:
+[
+  { "front": "Frage...", "back": "Antwort..." },
+  ...
+]`;
+
 export function FlashcardGenButton({ pdfText, topicId, onSuccess }: FlashcardGenButtonProps) {
+    const { profile } = useAuth();
+    const aiSettings = profile?.ai_settings;
     const [loading, setLoading] = useState(false);
     const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
     const [error, setError] = useState<string | null>(null);
@@ -33,7 +47,35 @@ export function FlashcardGenButton({ pdfText, topicId, onSuccess }: FlashcardGen
         setError(null);
 
         try {
-            if (typeof window !== 'undefined' && 'electron' in window) {
+            // On native mobile, call Gemini directly from the client
+            if (isMobile()) {
+                let apiKey = null;
+                let modelName = 'gemini-2.5-pro';
+
+                if (aiSettings?.enabled && aiSettings.apiKey && aiSettings.provider === 'gemini') {
+                    apiKey = aiSettings.apiKey;
+                    if (aiSettings.model) modelName = aiSettings.model;
+                }
+
+                if (!apiKey) throw new Error('Bitte aktiviere Gemini und hinterlege deinen Schlüssel in den Einstellungen!');
+
+                const genAI = new GoogleGenerativeAI(apiKey);
+                const model = genAI.getGenerativeModel({
+                    model: modelName,
+                    systemInstruction: FLASHCARD_PROMPT,
+                    generationConfig: {
+                        responseMimeType: 'application/json',
+                    }
+                });
+
+                const prompt = `${FLASHCARD_PROMPT}\n\nLerninhalt:\n${pdfText}`;
+                const result = await model.generateContent(prompt);
+                const responseText = result.response.text();
+                const flashcards = JSON.parse(responseText);
+
+                setStatus('success');
+                if (onSuccess) onSuccess(flashcards);
+            } else if (typeof window !== 'undefined' && 'electron' in window) {
                 // Electron IPC
                 const result = await (window as any).electron.aiFlashcards({ content: pdfText });
                 if (result.error) throw new Error(result.error);
@@ -41,11 +83,11 @@ export function FlashcardGenButton({ pdfText, topicId, onSuccess }: FlashcardGen
                 setStatus('success');
                 if (onSuccess) onSuccess(result.flashcards);
             } else {
-                // Web API
+                // Web API (server-side route)
                 const response = await fetch(getApiUrl('/api/ai/flashcards'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content: pdfText }),
+                    body: JSON.stringify({ content: pdfText, aiSettings }),
                 });
 
                 const data = await response.json();
