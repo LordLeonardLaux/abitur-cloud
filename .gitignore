@@ -47,3 +47,6 @@ builds/
 *.zip
 debug-admin.log
 worker.base64*.txt
+
+# Claude Code worktrees
+.claude/worktrees/
