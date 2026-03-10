@@ -39,24 +39,22 @@ export async function POST(request: Request) {
             priority: 10
         };
 
-        // Targeting Logic - TEMPORARILY DISABLED due to Plugin issues
-        // We revert to Broadcast for now.
-        /*
-        if (targeting?.userIds?.length > 0) {
+        // Targeting Logic
+        if (targeting?.userIds && targeting.userIds.length > 0) {
             // Target specific users
             payload.include_external_user_ids = targeting.userIds;
-        } 
-        else if (targeting?.segments?.length > 0) {
+        }
+        else if (targeting?.segments && targeting.segments.length > 0) {
             // Target segments (e.g. "Admins", "All")
             payload.included_segments = targeting.segments;
-        } 
+        }
         else if (targeting?.subjectId) {
             // Target by Tags (Subject & Level)
-            const filters = [];
+            const filters: any[] = [];
             if (targeting.courseType && ['LK', 'GK'].includes(targeting.courseType)) {
                 filters.push({ field: "tag", key: `subject_${targeting.subjectId}`, relation: "=", value: targeting.courseType });
             } else {
-                 filters.push({ field: "tag", key: `subject_${targeting.subjectId}`, relation: "exists" });
+                filters.push({ field: "tag", key: `subject_${targeting.subjectId}`, relation: "exists" });
             }
             if (targeting.gradeLevel) {
                 filters.push({ field: "tag", key: "grade", relation: "=", value: targeting.gradeLevel });
@@ -64,12 +62,8 @@ export async function POST(request: Request) {
             payload.filters = filters;
         }
         else {
-             payload.included_segments = ["All"];
+            payload.included_segments = ["All"];
         }
-        */
-
-        // FORCE BROADCAST
-        payload.included_segments = ["All"];
 
         const response = await fetch('https://onesignal.com/api/v1/notifications', {
             method: 'POST',

@@ -8,6 +8,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        // Force load local plugins to prevent dead code stripping by Xcode
+        _ = DocumentScannerPlugin.self
+        _ = NativeOneSignalPlugin.self
+
         // OneSignal Push Notification Setup
         OneSignal.initialize("78604014-b8b1-4f95-8020-0d00fa250dbc", withLaunchOptions: launchOptions)
         OneSignal.Notifications.requestPermission({ accepted in
