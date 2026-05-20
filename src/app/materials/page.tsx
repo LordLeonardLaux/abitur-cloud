@@ -1,15 +1,20 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { useFriends } from '@/hooks/useFriends';
 import { supabase } from '@/lib/supabase/client';
 import { SUBJECTS } from '@/lib/constants';
 import { ClassMaterial, Profile } from '@/lib/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { ChevronLeft, ChevronRight, Upload, Download, FileText, Calendar, Trash2, Edit3, X, Search, Loader2, User, GraduationCap } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, Download, FileText, Calendar, Trash2, Edit3, X, Search, Loader2, User, GraduationCap, List as ListIcon, Library, Users, Bookmark } from 'lucide-react';
 import { cn, formatGrade } from '@/lib/utils';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import PDFViewer from '@/components/ui/PDFViewer';
+import IWBViewer from '@/components/ui/IWBViewer';
+import { PDFThumbnail } from '@/components/ui/PDFThumbnail';
+import { ensureFileSize, withTimeout, timeoutForFile, uploadErrorMessage } from '@/lib/uploadHelpers';
 
 // Simple debounce hook implementation if not available
 function useDebounceValue<T>(value: T, delay: number): T {
@@ -27,13 +32,19 @@ function useDebounceValue<T>(value: T, delay: number): T {
 
 function MaterialsContent() {
     const { user } = useAuth();
+    const searchParams = useSearchParams();
+    const { friends } = useFriends();
     const [profile, setProfile] = useState<Profile | null>(null);
+    const [friendTopicFiles, setFriendTopicFiles] = useState<any[]>([]);
     const [materials, setMaterials] = useState<ClassMaterial[]>([]);
     const [teacherMaterials, setTeacherMaterials] = useState<any[]>([]);
+    const [linkedTopicFiles, setLinkedTopicFiles] = useState<any[]>([]);
     const [selectedGrade, setSelectedGrade] = useState<'12' | '13'>('13'); // Default to 13
     const [selectedSubject, setSelectedSubject] = useState<string>('all');
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
+    const [viewMode, setViewMode] = useState<'calendar' | 'list' | 'library'>('library');
+    const [librarySource, setLibrarySource] = useState<'all' | 'mine' | 'friend' | 'class' | 'teacher'>('all');
     const [uploading, setUploading] = useState(false);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -71,6 +82,41 @@ function MaterialsContent() {
         }
     }, [user]);
 
+    // Auto-set view from URL ?view=library
+    useEffect(() => {
+        const v = searchParams?.get('view');
+        if (v === 'library' || v === 'list' || v === 'calendar') {
+            setViewMode(v as any);
+        }
+    }, [searchParams]);
+
+    // Fetch own + friends' topic_files (only when library view active)
+    useEffect(() => {
+        if (viewMode !== 'library' || !user) {
+            setFriendTopicFiles([]);
+            return;
+        }
+        let cancelled = false;
+        const ownerIds = [user.id, ...friends.map((f: any) => f.id)];
+        supabase
+            .from('topic_files')
+            .select('id, file_name, storage_path, created_at, material_date, topic:topics!inner(id, owner_id, subject_id, owner:profiles!owner_id(full_name))')
+            .in('topic.owner_id', ownerIds)
+            .order('created_at', { ascending: false })
+            .limit(800)
+            .then(({ data }) => {
+                if (cancelled) return;
+                setFriendTopicFiles((data || []).map((f: any) => ({
+                    ...f,
+                    subject_id: f.topic?.subject_id,
+                    isLibraryNote: true,
+                    isMine: f.topic?.owner_id === user.id,
+                    ownerName: f.topic?.owner?.full_name,
+                })));
+            });
+        return () => { cancelled = true; };
+    }, [viewMode, user, friends]);
+
     useEffect(() => {
         const fetchMaterials = async () => {
             let query = supabase.from('class_materials').select('*');
@@ -80,6 +126,11 @@ function MaterialsContent() {
                 // Search Mode
                 query = query.ilike('file_name', `%${debouncedSearchTerm}%`);
                 teacherQuery = teacherQuery.ilike('file_name', `%${debouncedSearchTerm}%`);
+            } else if (viewMode === 'list' || viewMode === 'library') {
+                // List/Library Mode — load all materials, no date range
+                // (only cap the result count to avoid loading thousands)
+                query = query.limit(500);
+                teacherQuery = teacherQuery.limit(500);
             } else {
                 // Calendar Mode
                 const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
@@ -117,24 +168,68 @@ function MaterialsContent() {
             } else {
                 setTeacherMaterials([]);
             }
+
+            // Linked topic files — student's own files that have a material_date set
+            if (user) {
+                let topicFilesQuery = supabase
+                    .from('topic_files')
+                    .select('*, topic:topics!inner(id, owner_id, subject_id, semester, title)')
+                    .eq('topic.owner_id', user.id)
+                    .not('material_date', 'is', null);
+
+                if (debouncedSearchTerm) {
+                    topicFilesQuery = topicFilesQuery.ilike('file_name', `%${debouncedSearchTerm}%`);
+                } else if (viewMode === 'list' || viewMode === 'library') {
+                    topicFilesQuery = topicFilesQuery.limit(500);
+                } else {
+                    const startOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+                    const endOfMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+                    const startStr = startOfMonth.toISOString().split('T')[0];
+                    const endStr = endOfMonth.toISOString().split('T')[0];
+                    topicFilesQuery = topicFilesQuery.gte('material_date', startStr).lte('material_date', endStr);
+                }
+
+                if (selectedSubject !== 'all') {
+                    topicFilesQuery = topicFilesQuery.eq('topic.subject_id', selectedSubject);
+                }
+
+                const { data: topicFilesData } = await topicFilesQuery.order('material_date', { ascending: false });
+                if (topicFilesData) {
+                    // Mark these as own-linked-notes for renderer differentiation
+                    setLinkedTopicFiles(topicFilesData.map((f: any) => ({
+                        ...f,
+                        subject_id: f.topic?.subject_id,
+                        isLinkedNote: true,
+                    })));
+                } else {
+                    setLinkedTopicFiles([]);
+                }
+            }
         };
         fetchMaterials();
-    }, [currentMonth, selectedSubject, debouncedSearchTerm, selectedGrade]);
+    }, [currentMonth, selectedSubject, debouncedSearchTerm, selectedGrade, viewMode, user]);
 
     useEffect(() => {
-        if (debouncedSearchTerm) {
-            // Search Mode: Show all matches
-            setDisplayMaterials([...materials, ...teacherMaterials]);
+        if (debouncedSearchTerm || viewMode === 'list') {
+            // Search Mode or List Mode: Show all matches sorted by material_date desc
+            const all = [...materials, ...teacherMaterials, ...linkedTopicFiles];
+            all.sort((a: any, b: any) => {
+                const da = a.material_date || '';
+                const db = b.material_date || '';
+                return db.localeCompare(da);
+            });
+            setDisplayMaterials(all);
         } else if (selectedDate) {
             // Calendar Mode: Show selected day
             const filteredStudent = materials.filter(m => m.material_date === selectedDate);
             const filteredTeacher = teacherMaterials.filter(m => m.material_date === selectedDate);
-            setDisplayMaterials([...filteredStudent, ...filteredTeacher]);
+            const filteredLinked = linkedTopicFiles.filter(m => m.material_date === selectedDate);
+            setDisplayMaterials([...filteredStudent, ...filteredTeacher, ...filteredLinked]);
         } else {
             // Calendar Mode: No day selected
             setDisplayMaterials([]);
         }
-    }, [selectedDate, materials, teacherMaterials, debouncedSearchTerm]);
+    }, [selectedDate, materials, teacherMaterials, linkedTopicFiles, debouncedSearchTerm, viewMode]);
 
     // Handle file selection - opens modal
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -151,7 +246,14 @@ function MaterialsContent() {
 
     // Confirm upload
     const confirmUpload = async () => {
-        if (!pendingFile || !user) return; // Removed isSmartboard check so everyone can upload
+        if (!pendingFile || !user) return;
+
+        try {
+            ensureFileSize(pendingFile);
+        } catch (err: any) {
+            alert(err.message);
+            return;
+        }
 
         const today = new Date().toISOString().split('T')[0];
         const fileExt = pendingFile.name.split('.').pop();
@@ -162,18 +264,24 @@ function MaterialsContent() {
             const storageName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
             const filePath = `materials/${uploadSubject}/${today}/${storageName}`;
 
-            const { error: uploadError } = await supabase.storage.from('materials').upload(filePath, pendingFile);
+            const { error: uploadError } = await withTimeout(
+                supabase.storage.from('materials').upload(filePath, pendingFile),
+                timeoutForFile(pendingFile)
+            );
             if (uploadError) throw uploadError;
 
-            const { error: dbError } = await supabase.from('class_materials').insert({
-                uploader_id: user.id,
-                subject_id: uploadSubject,
-                material_date: today,
-                file_name: finalFileName,
-                storage_path: filePath,
-                lesson_hour: uploadLessonHour,
-                grade_level: uploadGrade
-            });
+            const { error: dbError } = await withTimeout(
+                supabase.from('class_materials').insert({
+                    uploader_id: user.id,
+                    subject_id: uploadSubject,
+                    material_date: today,
+                    file_name: finalFileName,
+                    storage_path: filePath,
+                    lesson_hour: uploadLessonHour,
+                    grade_level: uploadGrade
+                }),
+                15_000
+            );
             if (dbError) throw dbError;
 
             setShowUploadModal(false);
@@ -181,7 +289,7 @@ function MaterialsContent() {
             window.location.reload();
         } catch (error: any) {
             console.error('Upload failed:', error);
-            alert(`Fehler: ${error.message}`);
+            alert(`Fehler: ${uploadErrorMessage(error)}`);
         } finally {
             setUploading(false);
         }
@@ -235,7 +343,8 @@ function MaterialsContent() {
 
     const handlePreview = async (m: any) => {
         const isTeacher = 'teacher' in m;
-        const bucket = isTeacher ? 'teacher-materials' : 'materials';
+        const isLinkedNote = m.isLinkedNote;
+        const bucket = isLinkedNote ? 'topic-files' : (isTeacher ? 'teacher-materials' : 'materials');
         try {
             // Using getPublicUrl instead of createSignedUrl due to server storage issues
             const { data } = supabase.storage.from(bucket).getPublicUrl(m.storage_path);
@@ -263,7 +372,10 @@ function MaterialsContent() {
 
     const hasContentOnDay = (day: number) => {
         const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        return materials.some(m => m.material_date === dateStr) || teacherMaterials.some(m => m.material_date === dateStr);
+        return materials.some(m => m.material_date === dateStr)
+            || teacherMaterials.some(m => m.material_date === dateStr)
+            || linkedTopicFiles.some(m => m.material_date === dateStr)
+            || friendTopicFiles.some(m => m.material_date === dateStr);
     };
 
     const getDateString = (day: number) => {
@@ -275,32 +387,29 @@ function MaterialsContent() {
 
     return (
         <div className="flex min-h-screen bg-gray-50">
-            <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+            <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} mobileOnly />
             <div className="flex-1 flex flex-col min-w-0">
                 <main className="flex-1 p-4 md:p-8">
                     <div className="max-w-6xl mx-auto space-y-8">
                         {/* Header */}
                         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 md:gap-6 px-2 md:px-0">
-                            <div className="flex items-center justify-between w-full lg:w-auto">
-                                <div className="flex items-center gap-3">
-                                    <Link href="/dashboard" className="p-2 -ml-2 rounded-full hover:bg-gray-200">
-                                        <ChevronLeft className="w-6 h-6 text-gray-600" />
-                                    </Link>
-                                    <div>
-                                        <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">Material</h1>
-                                        <p className="text-gray-500 text-xs md:text-sm">
-                                            {debouncedSearchTerm ? 'Suche' : 'Smartboard-Mitschriften'}
-                                        </p>
-                                    </div>
-                                </div>
-                                {/* Mobile Burger Menu Inline */}
+                            <div className="flex items-center gap-3 w-full lg:w-auto">
+                                {/* Sidebar Menu Button */}
                                 <button
                                     onClick={() => setIsSidebarOpen(true)}
-                                    className="md:hidden p-2 bg-white border border-gray-100 shadow-sm rounded-xl text-gray-900 active:scale-95"
+                                    className="p-2 bg-white border border-gray-100 shadow-sm rounded-xl text-gray-900 active:scale-95"
                                 >
-                                    <Search size={22} className="hidden" /> {/* Placeholder/Icon shift logic if needed */}
                                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
                                 </button>
+                                <Link href="/dashboard" className="p-2 -ml-2 rounded-full hover:bg-gray-200">
+                                    <ChevronLeft className="w-6 h-6 text-gray-600" />
+                                </Link>
+                                <div>
+                                    <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">Material</h1>
+                                    <p className="text-gray-500 text-xs md:text-sm">
+                                        {debouncedSearchTerm ? 'Suche' : 'Alle Materialien · Kalender + Fächer'}
+                                    </p>
+                                </div>
                             </div>
 
                             <div className="flex items-center gap-4 flex-1 lg:justify-end">
@@ -327,7 +436,7 @@ function MaterialsContent() {
                                     <span className="font-bold hidden sm:inline">Hochladen</span>
                                     <input
                                         type="file"
-                                        accept="application/pdf,image/*"
+                                        accept="application/pdf,image/*,.iwb"
                                         className="hidden"
                                         onChange={handleFileSelect}
                                         disabled={uploading}
@@ -335,6 +444,29 @@ function MaterialsContent() {
                                 </label>
 
                             </div>
+                        </div>
+
+                        {/* Source filter pills (always visible) */}
+                        <div className="flex flex-wrap gap-2 mb-3">
+                            {([
+                                { id: 'all' as const, label: 'Alle Quellen', icon: null },
+                                { id: 'mine' as const, label: 'Eigene', icon: <User size={12} /> },
+                                { id: 'friend' as const, label: 'Freunde', icon: <Users size={12} /> },
+                                { id: 'class' as const, label: 'Smartboard', icon: <Bookmark size={12} /> },
+                                { id: 'teacher' as const, label: 'Lehrer', icon: <GraduationCap size={12} /> },
+                            ]).map((opt) => (
+                                <button
+                                    key={opt.id}
+                                    onClick={() => setLibrarySource(opt.id)}
+                                    className={cn(
+                                        'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap',
+                                        librarySource === opt.id ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-400'
+                                    )}
+                                >
+                                    {opt.icon}
+                                    {opt.label}
+                                </button>
+                            ))}
                         </div>
 
                         {/* Subject Tabs - Scrollable on mobile */}
@@ -396,60 +528,108 @@ function MaterialsContent() {
                             ))}
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            {/* Calendar (Disabled visually or just dimmed when searching) */}
-                            <div className={cn("bg-white rounded-2xl shadow-lg p-6 transition-opacity", debouncedSearchTerm && "opacity-50 pointer-events-none")}>
-                                <div className="flex items-center justify-between mb-6">
-                                    <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))} className="p-2 hover:bg-gray-100 rounded-lg">
-                                        <ChevronLeft size={20} />
-                                    </button>
-                                    <h2 className="text-xl font-bold text-gray-900">
+                        {/* Compact Calendar (always visible, drives date-filter) */}
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 md:p-4">
+                            <div className="flex items-center justify-between mb-2">
+                                <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))} className="p-1.5 hover:bg-gray-100 rounded-lg">
+                                    <ChevronLeft size={18} />
+                                </button>
+                                <div className="flex items-center gap-3">
+                                    <h2 className="text-sm md:text-base font-bold text-gray-900">
                                         {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
                                     </h2>
-                                    <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))} className="p-2 hover:bg-gray-100 rounded-lg">
-                                        <ChevronRight size={20} />
-                                    </button>
+                                    {selectedDate && (
+                                        <button
+                                            onClick={() => setSelectedDate(null)}
+                                            className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                                        >
+                                            <X size={12} />
+                                            Filter aus
+                                        </button>
+                                    )}
                                 </div>
+                                <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))} className="p-1.5 hover:bg-gray-100 rounded-lg">
+                                    <ChevronRight size={18} />
+                                </button>
+                            </div>
 
-                                <div className="grid grid-cols-7 gap-1 mb-2">
-                                    {weekDays.map(d => (
-                                        <div key={d} className="text-center text-xs font-bold text-gray-400 py-2">{d}</div>
-                                    ))}
-                                </div>
+                            <div className="grid grid-cols-7 gap-0.5 md:gap-1 mb-1">
+                                {weekDays.map(d => (
+                                    <div key={d} className="text-center text-[10px] font-bold text-gray-400 py-1">{d}</div>
+                                ))}
+                            </div>
 
-                                <div className="grid grid-cols-7 gap-1">
-                                    {getDaysInMonth().map((day, idx) => (
+                            <div className="grid grid-cols-7 gap-0.5 md:gap-1">
+                                {getDaysInMonth().map((day, idx) => {
+                                    const dateStr = day ? getDateString(day) : '';
+                                    const isSelected = day && selectedDate === dateStr;
+                                    const hasContent = day ? hasContentOnDay(day) : false;
+                                    return (
                                         <button
                                             key={idx}
                                             disabled={day === null}
-                                            onClick={() => day && setSelectedDate(getDateString(day))}
+                                            onClick={() => day && setSelectedDate(isSelected ? null : dateStr)}
                                             className={cn(
-                                                "aspect-square rounded-lg flex flex-col items-center justify-center text-sm font-medium transition-all",
+                                                "aspect-square rounded-md flex flex-col items-center justify-center text-xs font-medium transition-all relative",
                                                 day === null && "invisible",
-                                                day && selectedDate === getDateString(day) && "bg-blue-600 text-white",
-                                                day && selectedDate !== getDateString(day) && "hover:bg-gray-100",
+                                                isSelected && "bg-blue-600 text-white shadow-sm",
+                                                day && !isSelected && hasContent && "hover:bg-blue-50 text-gray-900",
+                                                day && !isSelected && !hasContent && "hover:bg-gray-50 text-gray-400",
                                             )}
                                         >
-                                            {day}
-                                            {day && (
-                                                <div className={cn("w-2 h-2 rounded-full mt-1", hasContentOnDay(day) ? "bg-green-500" : "bg-red-400")} />
+                                            <span>{day}</span>
+                                            {day && hasContent && (
+                                                <div className={cn("w-1 h-1 rounded-full absolute bottom-1", isSelected ? "bg-white" : "bg-blue-500")} />
                                             )}
                                         </button>
-                                    ))}
-                                </div>
+                                    );
+                                })}
                             </div>
+                        </div>
 
-                            {/* Results / Day Detail */}
-                            <div className="bg-white rounded-2xl shadow-lg p-6 max-h-[600px] overflow-y-auto">
-                                {debouncedSearchTerm ? (
-                                    // SEARCH MODE
+                        {/* Selected-Date Banner */}
+                        {selectedDate && (
+                            <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl text-sm">
+                                <Calendar size={14} className="text-blue-600" />
+                                <span className="font-semibold text-blue-700">
+                                    {new Date(selectedDate + 'T00:00:00').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
+                                </span>
+                                <button onClick={() => setSelectedDate(null)} className="ml-auto text-blue-600 hover:text-blue-800 p-1">
+                                    <X size={14} />
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Unified Tile Grid (always visible, grouped by Fach when 'all') */}
+                        <LibraryGrid
+                            classMaterials={materials}
+                            teacherMaterials={teacherMaterials}
+                            ownTopicFiles={linkedTopicFiles}
+                            friendTopicFiles={friendTopicFiles}
+                            selectedSubject={selectedSubject}
+                            selectedDate={selectedDate}
+                            source={librarySource}
+                            searchTerm={debouncedSearchTerm}
+                            user={user}
+                            onPreview={handlePreview}
+                        />
+
+                        {/* Hidden: legacy calendar+list view (kept for ?view=calendar / ?view=list URL compat) */}
+                        <div className="hidden">
+                            <div>
+                                {debouncedSearchTerm || viewMode === 'list' ? (
+                                    // SEARCH MODE or LIST MODE — chronological list
                                     <>
                                         <div className="flex items-center justify-between mb-6">
                                             <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                                <Search size={18} />
-                                                Suchergebnisse
+                                                {debouncedSearchTerm ? <Search size={18} /> : <ListIcon size={18} />}
+                                                {debouncedSearchTerm
+                                                    ? 'Suchergebnisse'
+                                                    : selectedSubject === 'all'
+                                                        ? 'Alle Materialien'
+                                                        : `${SUBJECTS.find(s => s.id === selectedSubject)?.name || ''} — chronologisch`}
                                                 <span className="text-sm font-normal text-gray-500 ml-2">
-                                                    ({displayMaterials.length} gefunden)
+                                                    ({displayMaterials.length})
                                                 </span>
                                             </h3>
                                         </div>
@@ -463,7 +643,13 @@ function MaterialsContent() {
                                                             isTeacher ? "bg-amber-50 hover:bg-white" : "bg-gray-50 hover:bg-white"
                                                         )}>
                                                             <button onClick={() => handlePreview(m)} className="flex items-center gap-3 flex-1 text-left">
-                                                                {isTeacher ? <GraduationCap size={24} className="text-amber-600 flex-shrink-0" /> : <FileText className="text-blue-500 flex-shrink-0" size={24} />}
+                                                                <PDFThumbnail
+                                                                    storagePath={m.storage_path}
+                                                                    bucket={m.isLinkedNote ? 'topic-files' : (isTeacher ? 'teacher-materials' : 'materials')}
+                                                                    width={72}
+                                                                    orientation="landscape"
+                                                                    className="flex-shrink-0 shadow-sm"
+                                                                />
                                                                 <div className="overflow-hidden">
                                                                     <span className="block font-medium text-gray-800 truncate">{m.file_name}</span>
                                                                     <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -502,8 +688,19 @@ function MaterialsContent() {
                                             </div>
                                         ) : (
                                             <div className="text-center py-12 text-gray-400">
-                                                <Search size={48} className="mx-auto mb-4 opacity-50" />
-                                                <p>Keine Mitschriften gefunden für "{debouncedSearchTerm}"</p>
+                                                {debouncedSearchTerm ? (
+                                                    <>
+                                                        <Search size={48} className="mx-auto mb-4 opacity-50" />
+                                                        <p>Keine Mitschriften gefunden für "{debouncedSearchTerm}"</p>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <FileText size={48} className="mx-auto mb-4 opacity-50" />
+                                                        <p>
+                                                            Keine Materialien {selectedSubject === 'all' ? 'vorhanden' : `für ${SUBJECTS.find(s => s.id === selectedSubject)?.name || 'dieses Fach'}`}
+                                                        </p>
+                                                    </>
+                                                )}
                                             </div>
                                         )}
                                     </>
@@ -528,11 +725,17 @@ function MaterialsContent() {
                                                             isTeacher ? "bg-amber-50 hover:bg-white" : "bg-gray-50 hover:bg-white"
                                                         )}>
                                                             <button onClick={() => handlePreview(m)} className="flex items-center gap-3 flex-1 text-left">
-                                                                <div className="relative">
-                                                                    {isTeacher ? <GraduationCap size={24} className="text-amber-600 flex-shrink-0" /> : <FileText className="text-blue-500 flex-shrink-0" size={24} />}
+                                                                <div className="relative flex-shrink-0">
+                                                                    <PDFThumbnail
+                                                                        storagePath={m.storage_path}
+                                                                        bucket={m.isLinkedNote ? 'topic-files' : (isTeacher ? 'teacher-materials' : 'materials')}
+                                                                        width={72}
+                                                                        orientation="landscape"
+                                                                        className="shadow-sm"
+                                                                    />
                                                                     {m.lesson_hour && (
                                                                         <span className={cn(
-                                                                            "absolute -top-2 -right-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full border",
+                                                                            "absolute -top-2 -right-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full border z-10",
                                                                             isTeacher ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-blue-100 text-blue-700 border-blue-200"
                                                                         )}>
                                                                             {m.lesson_hour}.
@@ -768,13 +971,172 @@ function MaterialsContent() {
                                     </div>
                                 </div>
                                 <div className="flex-1 bg-gray-100 overflow-hidden relative">
-                                    <PDFViewer url={previewUrl} />
+                                    {/\.iwb($|\?)/i.test(previewFile.file_name) ? (
+                                        <IWBViewer url={previewUrl} fileName={previewFile.file_name} />
+                                    ) : (
+                                        <PDFViewer url={previewUrl} />
+                                    )}
                                 </div>
                             </div>
                         </div>
                     )}
                 </main>
             </div>
+        </div>
+    );
+}
+
+// =====================================================================
+// LIBRARY GRID — single unified view with tiles grouped by Fach
+// All 4 sources merged, filtered by subject + source + search + date
+// =====================================================================
+interface LibraryGridProps {
+    classMaterials: any[];
+    teacherMaterials: any[];
+    ownTopicFiles: any[];
+    friendTopicFiles: any[];
+    selectedSubject: string;
+    selectedDate: string | null;
+    source: 'all' | 'mine' | 'friend' | 'class' | 'teacher';
+    searchTerm: string;
+    user: any;
+    onPreview: (m: any) => void;
+}
+
+function LibraryGrid({ classMaterials, teacherMaterials, ownTopicFiles, friendTopicFiles, selectedSubject, selectedDate, source, searchTerm, user, onPreview }: LibraryGridProps) {
+    const filteredItems = useMemo(() => {
+        const cm = classMaterials.map((m: any) => ({ ...m, _src: 'class', _bucket: 'materials' }));
+        const tm = teacherMaterials.map((m: any) => ({ ...m, _src: 'teacher', _bucket: 'teacher-materials', isLinkedNote: false }));
+        const own = ownTopicFiles.filter((f: any) => f.isLinkedNote).map((f: any) => ({ ...f, _src: 'mine', _bucket: 'topic-files' }));
+        const all = friendTopicFiles.map((f: any) => ({
+            ...f,
+            _src: f.isMine ? 'mine' : 'friend',
+            _bucket: 'topic-files',
+            isLinkedNote: true,
+        }));
+        const merged = [...cm, ...tm, ...all];
+        const seenIds = new Set(merged.map((m) => m.id));
+        own.forEach((f) => { if (!seenIds.has(f.id)) merged.push(f); });
+
+        return merged
+            .filter((it) => selectedSubject === 'all' || it.subject_id === selectedSubject)
+            .filter((it) => source === 'all' || it._src === source)
+            .filter((it) => !searchTerm || (it.file_name || '').toLowerCase().includes(searchTerm.toLowerCase()))
+            .filter((it) => !selectedDate || (it.material_date && it.material_date === selectedDate))
+            .sort((a, b) => {
+                // Chronological: newest first by upload date (fallback: material_date)
+                const da = a.created_at || a.material_date || '';
+                const db = b.created_at || b.material_date || '';
+                return db.localeCompare(da);
+            });
+    }, [classMaterials, teacherMaterials, ownTopicFiles, friendTopicFiles, selectedSubject, selectedDate, source, searchTerm]);
+
+    // Group by subject when 'Alle Fächer' is selected
+    const groupedBySubject = useMemo(() => {
+        if (selectedSubject !== 'all') return null;
+        const groups = new Map<string, any[]>();
+        for (const item of filteredItems) {
+            const key = item.subject_id || 'other';
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key)!.push(item);
+        }
+        const subjectOrder = SUBJECTS.map((s) => s.id);
+        return Array.from(groups.entries()).sort(([a], [b]) => {
+            const ia = subjectOrder.indexOf(a);
+            const ib = subjectOrder.indexOf(b);
+            if (ia === -1 && ib === -1) return a.localeCompare(b);
+            if (ia === -1) return 1;
+            if (ib === -1) return -1;
+            return ia - ib;
+        });
+    }, [filteredItems, selectedSubject]);
+
+    const getSourceFlag = (it: any) => {
+        if (it._src === 'mine') return { name: 'Du', color: 'bg-blue-50 text-blue-700 border-blue-200', icon: <User size={11} /> };
+        if (it._src === 'friend') return { name: it.ownerName || 'Freund', color: 'bg-green-50 text-green-700 border-green-200', icon: <Users size={11} /> };
+        if (it._src === 'class') return { name: it.uploader?.full_name ? `Smartboard · ${it.uploader.full_name.split(' ')[0]}` : 'Smartboard', color: 'bg-purple-50 text-purple-700 border-purple-200', icon: <Bookmark size={11} /> };
+        if (it._src === 'teacher') return { name: it.teacher?.full_name || 'Lehrer', color: 'bg-amber-50 text-amber-700 border-amber-200', icon: <GraduationCap size={11} /> };
+        return { name: '?', color: 'bg-gray-100 text-gray-600 border-gray-200', icon: null };
+    };
+
+    const formatDate = (d?: string) => {
+        if (!d) return '—';
+        const date = new Date(d.includes('T') ? d : d + 'T00:00:00');
+        return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    };
+
+    if (filteredItems.length === 0) {
+        return (
+            <div className="text-center py-20 text-gray-400">
+                <Library size={48} className="mx-auto mb-3 opacity-50" />
+                <p className="text-sm">Keine Materialien gefunden</p>
+                <p className="text-xs mt-1">{selectedDate ? 'Anderen Tag wählen oder Datum zurücksetzen' : 'Filter anpassen oder Suche zurücksetzen'}</p>
+            </div>
+        );
+    }
+
+    const renderTile = (it: any) => {
+        const flag = getSourceFlag(it);
+        return (
+            <button
+                key={`${it._src}-${it.id}`}
+                onClick={() => onPreview({ ...it, isLinkedNote: it._bucket === 'topic-files', teacher: it._src === 'teacher' ? it.teacher : undefined })}
+                className="group bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg hover:border-blue-200 transition-all overflow-hidden text-left active:scale-[0.98] flex flex-col"
+            >
+                <div className="aspect-[4/3] bg-gray-50 flex items-center justify-center overflow-hidden border-b border-gray-100 relative">
+                    <PDFThumbnail
+                        storagePath={it.storage_path}
+                        bucket={it._bucket}
+                        width={240}
+                        orientation="landscape"
+                        className="!rounded-none !border-0 !shadow-none"
+                    />
+                    <span className={cn(
+                        'absolute top-2 left-2 inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border backdrop-blur-sm bg-white/90 max-w-[calc(100%-1rem)]',
+                        flag.color
+                    )}>
+                        {flag.icon}
+                        <span className="truncate">{flag.name}</span>
+                    </span>
+                </div>
+                <div className="p-2.5 flex-1 flex flex-col justify-between gap-1">
+                    <p className="text-xs md:text-sm font-semibold text-gray-900 line-clamp-2 leading-tight" title={it.file_name}>
+                        {it.file_name}
+                    </p>
+                    <p className="text-[10px] text-gray-400">
+                        {formatDate(it.material_date || it.created_at)}
+                    </p>
+                </div>
+            </button>
+        );
+    };
+
+    // Subject-grouped view (when 'Alle Fächer' is selected)
+    if (groupedBySubject) {
+        return (
+            <div className="space-y-8">
+                {groupedBySubject.map(([subjectId, items]) => {
+                    const subj = SUBJECTS.find((s) => s.id === subjectId);
+                    return (
+                        <section key={subjectId}>
+                            <div className="flex items-baseline gap-3 mb-3 px-1">
+                                <h2 className="text-lg font-bold text-gray-900">{subj?.name || subjectId || 'Sonstige'}</h2>
+                                <span className="text-sm text-gray-400 font-medium">{items.length}</span>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+                                {items.map(renderTile)}
+                            </div>
+                        </section>
+                    );
+                })}
+            </div>
+        );
+    }
+
+    // Single-subject flat grid
+    return (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+            {filteredItems.map(renderTile)}
         </div>
     );
 }
